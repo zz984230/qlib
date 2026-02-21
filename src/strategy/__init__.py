@@ -14,6 +14,7 @@ from src.strategy.advanced import (
 )
 from src.strategy.regime import RegimeDetector, MarketRegime, MarketState, get_recommended_strategy
 from src.strategy.adaptive import AdaptiveStrategy, DynamicAllocationStrategy
+from src.strategy.factor_driven import FactorDrivenStrategy
 
 __all__ = [
     # 基础策略
@@ -28,6 +29,8 @@ __all__ = [
     "BollingerBandsStrategy",
     "BreakoutStrategy",
     "OscillationStrategy",
+    # 因子驱动策略
+    "FactorDrivenStrategy",
     # 自适应策略
     "AdaptiveStrategy",
     "DynamicAllocationStrategy",
