@@ -179,6 +179,11 @@ class LowDrawdownBacktestRunner:
         portfolio_high = initial_cash
         cooldown_days = 0
 
+        # Calculate short_ma and long_ma for signal reasons
+        short_ma_vals = self._sma(close, strategy.ma_short)
+        long_ma_vals = self._sma(close, strategy.ma_long)
+        rsi_vals = strategy._calculate_rsi(close, strategy.rsi_period)
+
         for i in range(len(close)):
             current_price = close[i]
 
@@ -202,6 +207,7 @@ class LowDrawdownBacktestRunner:
                         "shares": position,
                         "reason": f"max_drawdown_{current_drawdown:.1%}",
                         "type": "sell",
+                        "detail_reason": f"组合回撤达到{current_drawdown:.1%},触发强制平仓",
                     })
                     position = 0
                 trading_suspended = True
@@ -234,6 +240,7 @@ class LowDrawdownBacktestRunner:
                         "reason": f"trailing_stop_{drawdown_from_high:.1%}",
                         "type": "sell",
                         "profit": profit,
+                        "detail_reason": f"盈利{pnl_ratio:.1%}后从高点回撤{drawdown_from_high:.1%},触发移动止损",
                     })
                     position = 0
 
@@ -248,6 +255,7 @@ class LowDrawdownBacktestRunner:
                         "reason": f"stop_loss_{pnl_ratio:.1%}",
                         "type": "sell",
                         "profit": profit,
+                        "detail_reason": f"亏损{pnl_ratio:.1%},触发止损(阈值{self.stop_loss_pct:.1%})",
                     })
                     position = 0
                     cooldown_days = 3
@@ -266,6 +274,21 @@ class LowDrawdownBacktestRunner:
                         position = shares
                         entry_price = current_price
                         highest_price = current_price
+
+                        # Build detailed reason
+                        detail_reasons = []
+                        if current_signal >= 1:
+                            detail_reasons.append("金叉信号")
+                        elif current_signal >= 0.7:
+                            detail_reasons.append("RSI超卖反弹")
+                        if not np.isnan(short_ma_vals[i]) and not np.isnan(long_ma_vals[i]):
+                            if short_ma_vals[i] > long_ma_vals[i]:
+                                detail_reasons.append(f"短期均线上穿长期均线")
+                            if current_price > long_ma_vals[i]:
+                                detail_reasons.append(f"价格在长期均线上方")
+                        if not np.isnan(rsi_vals[i]):
+                            detail_reasons.append(f"RSI={rsi_vals[i]:.1f}")
+
                         trades.append({
                             "date": str(dates[i])[:10],
                             "action": "buy",
@@ -273,11 +296,24 @@ class LowDrawdownBacktestRunner:
                             "shares": shares,
                             "reason": f"signal_{current_signal:.2f}",
                             "type": "buy",
+                            "detail_reason": ", ".join(detail_reasons) if detail_reasons else f"信号强度{current_signal:.2f}",
                         })
 
                 elif current_signal < 0 and position > 0:
                     profit = (current_price - entry_price) * position
                     cash += position * current_price
+
+                    # Build detailed sell reason
+                    detail_reasons = []
+                    if current_signal <= -1:
+                        detail_reasons.append("死叉信号")
+                    elif current_signal <= -0.8:
+                        detail_reasons.append("RSI超买")
+                    elif current_signal <= -0.6:
+                        detail_reasons.append("价格跌破长期均线")
+                    if not np.isnan(rsi_vals[i]):
+                        detail_reasons.append(f"RSI={rsi_vals[i]:.1f}")
+
                     trades.append({
                         "date": str(dates[i])[:10],
                         "action": "sell",
@@ -286,6 +322,7 @@ class LowDrawdownBacktestRunner:
                         "reason": f"signal_{current_signal:.2f}",
                         "type": "sell",
                         "profit": profit,
+                        "detail_reason": ", ".join(detail_reasons) if detail_reasons else f"信号强度{current_signal:.2f}",
                     })
                     position = 0
 
@@ -312,6 +349,24 @@ class LowDrawdownBacktestRunner:
         sharpe_ratio = self._calculate_sharpe(returns)
         win_rate = (returns > 0).sum() / len(returns) if len(returns) > 0 else 0
 
+        # Calculate buy-and-hold return for comparison
+        first_price = close[0]
+        last_price = close[-1]
+        buy_hold_shares = int(initial_cash / first_price / 100) * 100
+        buy_hold_final = buy_hold_shares * last_price
+        buy_hold_return = (buy_hold_final - initial_cash) / initial_cash
+
+        # Calculate buy-and-hold portfolio values
+        buy_hold_values = []
+        for i, price in enumerate(close):
+            buy_hold_values.append({
+                "date": dates[i],
+                "value": buy_hold_shares * price + (initial_cash - buy_hold_shares * first_price),
+            })
+        buy_hold_df = pd.DataFrame(buy_hold_values)
+        buy_hold_df["date"] = pd.to_datetime(buy_hold_df["date"])
+        buy_hold_df = buy_hold_df.set_index("date")
+
         return {
             "total_return": total_return,
             "max_drawdown": max_drawdown,
@@ -320,7 +375,15 @@ class LowDrawdownBacktestRunner:
             "final_value": cash,
             "trades": trades,
             "portfolio_values": pv_df,
+            "buy_hold_return": buy_hold_return,
+            "buy_hold_values": buy_hold_df,
         }
+
+    def _sma(self, data: np.ndarray, window: int) -> np.ndarray:
+        result = np.full(len(data), np.nan)
+        for i in range(window - 1, len(data)):
+            result[i] = np.mean(data[i - window + 1:i + 1])
+        return result
 
     def _calculate_max_drawdown(self, values: pd.Series) -> float:
         cummax = values.cummax()
@@ -353,15 +416,21 @@ def get_chinese_font():
     return 'Helvetica'
 
 
-def generate_chart(pv_df: pd.DataFrame, output_path: Path):
+def generate_chart(pv_df: pd.DataFrame, output_path: Path, buy_hold_df: pd.DataFrame = None):
     """生成净值曲线图"""
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-    # 净值曲线
+    # 净值曲线 (包含买入持有基准)
     ax1 = axes[0, 0]
     ax1.plot(pv_df.index, pv_df['value'] / pv_df['value'].iloc[0], 'b-', linewidth=1.5, label='策略净值')
+
+    # Add buy-and-hold benchmark if provided
+    if buy_hold_df is not None and len(buy_hold_df) > 0:
+        buy_hold_nav = buy_hold_df['value'] / buy_hold_df['value'].iloc[0]
+        ax1.plot(buy_hold_df.index, buy_hold_nav, 'g--', linewidth=1.5, label='买入持有', alpha=0.8)
+
     ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
-    ax1.set_title('净值曲线', fontsize=12)
+    ax1.set_title('净值曲线对比', fontsize=12)
     ax1.set_xlabel('日期')
     ax1.set_ylabel('净值')
     ax1.legend()
@@ -792,7 +861,11 @@ def create_combined_pdf_report(
     comparison_rows = [comparison_header]
 
     metrics = [
-        ("总收益率", "total_return", "{:.2%}"),
+        ("回测区间", "period_range", "{}"),
+        ("交易日数", "trading_days", "{}"),
+        ("策略收益率", "total_return", "{:.2%}"),
+        ("买入持有收益率", "buy_hold_return", "{:.2%}"),
+        ("超额收益", "excess_return", "{:.2%}"),
         ("最大回撤", "max_drawdown", "{:.2%}"),
         ("夏普比率", "sharpe_ratio", "{:.2f}"),
         ("胜率", "win_rate", "{:.2%}"),
@@ -803,11 +876,20 @@ def create_combined_pdf_report(
         row = [metric_name]
         for period in ["1y", "3m", "1m"]:
             if period in results:
-                value = results[period][metric_key]
-                if "元" in fmt:
-                    row.append(fmt.format(value))
+                r = results[period]
+                if metric_key == "period_range":
+                    period_info = r.get("period_info", {})
+                    row.append(f"{period_info.get('start_date', '-')} ~ {period_info.get('end_date', '-')}")
+                elif metric_key == "trading_days":
+                    period_info = r.get("period_info", {})
+                    row.append(f"{period_info.get('trading_days', 0)}天")
+                elif metric_key == "excess_return":
+                    excess = r.get("total_return", 0) - r.get("buy_hold_return", 0)
+                    row.append(fmt.format(excess))
+                elif "元" in fmt:
+                    row.append(fmt.format(r[metric_key]))
                 else:
-                    row.append(fmt.format(value))
+                    row.append(fmt.format(r[metric_key]))
             else:
                 row.append("-")
         comparison_rows.append(row)
@@ -870,36 +952,41 @@ def create_combined_pdf_report(
         story.append(PageBreak())
         story.append(Paragraph(f"{section_num}、{period_name}详细分析", heading_style))
 
-        # Period info
+        # Period info - show exact date range
         period_info = result.get("period_info", {})
         story.append(Paragraph(
-            f"数据区间: {period_info.get('start_date', '-')} 至 {period_info.get('end_date', '-')} "
+            f"<b>回测时间段:</b> {period_info.get('start_date', '-')} 至 {period_info.get('end_date', '-')} "
             f"(共 {period_info.get('trading_days', 0)} 个交易日)",
             normal_style
         ))
         story.append(Spacer(1, 0.3*cm))
 
-        # Performance table
+        # Performance comparison table (strategy vs buy-and-hold)
+        buy_hold_return = result.get('buy_hold_return', 0)
+        excess_return = result['total_return'] - buy_hold_return
+
         perf_data = [
-            ["指标", "数值"],
-            ["总收益率", f"{result['total_return']:.2%}"],
-            ["最大回撤", f"{result['max_drawdown']:.2%}"],
-            ["夏普比率", f"{result['sharpe_ratio']:.2f}"],
-            ["胜率", f"{result['win_rate']:.2%}"],
-            ["最终资产", f"{result['final_value']:,.2f} 元"],
+            ["指标", "量化策略", "买入持有", "对比"],
+            ["收益率", f"{result['total_return']:.2%}", f"{buy_hold_return:.2%}",
+             f"+{excess_return:.2%}" if excess_return >= 0 else f"{excess_return:.2%}"],
+            ["最大回撤", f"{result['max_drawdown']:.2%}", "-", "-"],
+            ["夏普比率", f"{result['sharpe_ratio']:.2f}", "-", "-"],
+            ["胜率", f"{result['win_rate']:.2%}", "-", "-"],
+            ["最终资产", f"{result['final_value']:,.2f} 元", "-", "-"],
         ]
 
-        perf_table = Table(perf_data, colWidths=[5*cm, 5*cm])
+        perf_table = Table(perf_data, colWidths=[3.5*cm, 3.5*cm, 3.5*cm, 3.5*cm])
         perf_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), chinese_font),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2874a6')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ('TEXTCOLOR', (3, 1), (3, 1), colors.HexColor('#27ae60') if excess_return >= 0 else colors.HexColor('#e74c3c')),
         ]))
         story.append(perf_table)
 
@@ -926,27 +1013,90 @@ def create_combined_pdf_report(
             trade_summary += f"已实现盈亏 {total_profit:,.2f} 元"
             story.append(Paragraph(trade_summary, normal_style))
 
+            # Detailed trade records (like delivery note)
+            story.append(Spacer(1, 0.3*cm))
+            story.append(Paragraph("交易明细 (交割单)", subheading_style))
+
+            # Create detailed trade table
+            trade_header = ["序号", "日期", "操作", "价格", "股数", "金额", "原因说明"]
+            trade_rows = [trade_header]
+
+            for i, trade in enumerate(trades, 1):
+                action_text = "买入" if trade['type'] == 'buy' else "卖出"
+                action_color = 'blue' if trade['type'] == 'buy' else 'red'
+
+                amount = trade['price'] * trade['shares']
+                detail_reason = trade.get('detail_reason', trade.get('reason', ''))
+
+                # Truncate reason if too long
+                if len(detail_reason) > 30:
+                    detail_reason = detail_reason[:30] + "..."
+
+                trade_rows.append([
+                    str(i),
+                    str(trade['date']),
+                    action_text,
+                    f"{trade['price']:.2f}",
+                    str(trade['shares']),
+                    f"{amount:,.0f}",
+                    detail_reason,
+                ])
+
+            trade_table = Table(trade_rows, colWidths=[0.8*cm, 2.2*cm, 1.2*cm, 1.8*cm, 1.2*cm, 2*cm, 6*cm])
+            trade_table.setStyle(TableStyle([
+                ('FONTNAME', (0, 0), (-1, -1), chinese_font),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a5276')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (5, -1), 'CENTER'),
+                ('ALIGN', (6, 1), (6, -1), 'LEFT'),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ]))
+            story.append(trade_table)
+
+            # Add note about trade details
+            story.append(Spacer(1, 0.2*cm))
+            note_style = ParagraphStyle(
+                'Note',
+                parent=normal_style,
+                fontSize=8,
+                textColor=colors.grey,
+            )
+            story.append(Paragraph(
+                "注: 买入原因包括金叉信号(短期均线上穿长期均线)、RSI超卖反弹、价格在长期均线上方等; "
+                "卖出原因包括死叉信号、RSI超买、价格跌破长期均线、止损、移动止损等。",
+                note_style
+            ))
+
         section_num += 1
 
     # ============ Conclusion ============
     story.append(PageBreak())
     story.append(Paragraph(f"{section_num}、结论与建议", heading_style))
 
-    # Summary conclusions
+    # Summary conclusions with buy-and-hold comparison
     conclusions = ["<b>多周期综合分析:</b>"]
 
     for period in ["1y", "3m", "1m"]:
         if period in results:
             r = results[period]
             status = "达标" if r['max_drawdown'] <= 0.03 else "未达标"
+            buy_hold = r.get('buy_hold_return', 0)
+            excess = r['total_return'] - buy_hold
+            excess_text = f"超额+{excess:.2%}" if excess >= 0 else f"跑输{excess:.2%}"
             conclusions.append(
-                f"- {period_names[period]}: 收益 {r['total_return']:.2%}, "
+                f"- {period_names[period]}: 策略收益 {r['total_return']:.2%}, "
+                f"买入持有 {buy_hold:.2%}, {excess_text}, "
                 f"回撤 {r['max_drawdown']:.2%} ({status})"
             )
 
     conclusions.append("")
     conclusions.append("<b>策略类型:</b> 趋势跟踪 + 严格风控")
     conclusions.append("<b>目标回撤:</b> 3.0%")
+    conclusions.append("<b>基准对比:</b> 策略收益 vs 买入持有收益")
 
     for conclusion in conclusions:
         story.append(Paragraph(conclusion, normal_style))
@@ -1082,17 +1232,21 @@ def main():
         }
         results[period_key] = result
 
-        # Generate chart
+        # Generate chart with buy-and-hold benchmark
         chart_path = output_dir / f"{args.symbol}_{period_key}_chart.png"
         if REPORTLAB_AVAILABLE:
-            generate_chart(result['portfolio_values'], chart_path)
+            buy_hold_df = result.get('buy_hold_values')
+            generate_chart(result['portfolio_values'], chart_path, buy_hold_df)
             chart_paths[period_key] = chart_path
 
-        # Print result
+        # Print result with buy-and-hold comparison
         status = "[OK]" if result["max_drawdown"] <= args.target_drawdown else "[WARN]"
-        print(f"{period_name}: 收益 {result['total_return']:>7.2%}, "
-              f"回撤 {result['max_drawdown']:>6.2%}, "
-              f"夏普 {result['sharpe_ratio']:>5.2f} {status}")
+        buy_hold = result.get('buy_hold_return', 0)
+        excess = result['total_return'] - buy_hold
+        excess_sign = "+" if excess >= 0 else ""
+        print(f"{period_name}: 策略 {result['total_return']:>7.2%} vs 持有 {buy_hold:>7.2%} "
+              f"(超额{excess_sign}{excess:.2%}), "
+              f"回撤 {result['max_drawdown']:>6.2%} {status}")
 
     print("-" * 60)
 
