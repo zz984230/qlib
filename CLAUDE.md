@@ -119,7 +119,9 @@ uv run python scripts/run_backtest.py --strategy dual_ma --start-date 2023-01-01
 uv run python scripts/run_analysis.py --strategy rsi --start-date 2023-01-01
 
 # Low drawdown strategy backtest with PDF report (recommended for risk control)
-uv run python scripts/low_drawdown_report.py --symbol 601138 --start-date 2024-01-01 --end-date 2025-02-20 --target-drawdown 0.03
+uv run python scripts/low_drawdown_report.py --symbol 601138 --period 1y    # 近1年
+uv run python scripts/low_drawdown_report.py --symbol 601138 --period 3m    # 近3月
+uv run python scripts/low_drawdown_report.py --symbol 601138 --period 1m    # 近1月
 
 # Interactive strategy optimization
 uv run python scripts/optimize_strategy.py --strategy dual_ma

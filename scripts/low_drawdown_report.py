@@ -677,24 +677,51 @@ def create_pdf_report(
 def main():
     """Main function"""
     import argparse
+    from datetime import datetime, timedelta
+
+    # Calculate default dates based on current date
+    today = datetime.now()
+    default_end_date = today.strftime("%Y-%m-%d")
+    default_start_date_1y = (today - timedelta(days=365)).strftime("%Y-%m-%d")
+    default_start_date_3m = (today - timedelta(days=90)).strftime("%Y-%m-%d")
+    default_start_date_1m = (today - timedelta(days=30)).strftime("%Y-%m-%d")
 
     parser = argparse.ArgumentParser(description="低回撤策略回测与PDF报告生成")
     parser.add_argument("--symbol", type=str, default="601138", help="股票代码")
     parser.add_argument("--name", type=str, default="工业富联", help="股票名称")
-    parser.add_argument("--start-date", type=str, default="2024-01-01", help="开始日期")
-    parser.add_argument("--end-date", type=str, default="2025-02-20", help="结束日期")
-    parser.add_argument("--cash", type=float, default=1000000, help="初始资金")
+    parser.add_argument("--period", type=str, default="1y",
+                        choices=["1y", "3m", "1m"],
+                        help="回测周期: 1y(近1年), 3m(近3月), 1m(近1月)")
+    parser.add_argument("--start-date", type=str, default=None, help="开始日期(覆盖--period)")
+    parser.add_argument("--end-date", type=str, default=None, help="结束日期(覆盖--period)")
+    parser.add_argument("--cash", type=float, default=50000, help="初始资金(默认5万)")
     parser.add_argument("--target-drawdown", type=float, default=0.03, help="目标最大回撤")
     args = parser.parse_args()
 
-    logger.info(f"[INFO] 获取 {args.symbol} 数据...")
+    # Determine date range based on period or explicit dates
+    if args.start_date and args.end_date:
+        start_date = args.start_date
+        end_date = args.end_date
+    else:
+        end_date = args.end_date or default_end_date
+        if args.period == "1y":
+            start_date = default_start_date_1y
+        elif args.period == "3m":
+            start_date = default_start_date_3m
+        else:  # 1m
+            start_date = default_start_date_1m
+
+    period_names = {"1y": "近1年", "3m": "近3月", "1m": "近1月"}
+    period_name = period_names.get(args.period, args.period)
+
+    logger.info(f"[INFO] 获取 {args.symbol} 数据 ({period_name}: {start_date} ~ {end_date})...")
 
     # Fetch data
     loader = AkshareLoader()
     data = loader.get_stock_data(
         symbol=args.symbol,
-        start_date=args.start_date,
-        end_date=args.end_date,
+        start_date=start_date,
+        end_date=end_date,
         adjust="qfq",
     )
 
@@ -732,7 +759,7 @@ def main():
     print("低回撤策略回测结果")
     print("=" * 60)
     print(f"股票: {args.name} ({args.symbol})")
-    print(f"区间: {args.start_date} -> {args.end_date}")
+    print(f"周期: {period_name} ({start_date} -> {end_date})")
     print(f"初始资金: {args.cash:,.0f} 元")
     print("-" * 60)
     print(f"总收益率:     {result['total_return']:>10.2%}")
@@ -751,8 +778,8 @@ def main():
     output_dir = Path("reports")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chart_path = output_dir / f"{args.symbol}_low_drawdown_chart.png"
-    pdf_path = output_dir / f"{args.symbol}_low_drawdown_report.pdf"
+    chart_path = output_dir / f"{args.symbol}_{args.period}_chart.png"
+    pdf_path = output_dir / f"{args.symbol}_{args.period}_report.pdf"
 
     if REPORTLAB_AVAILABLE:
         # Generate chart
@@ -762,8 +789,9 @@ def main():
         # Generate PDF report
         data_info = {
             'generate_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'start_date': args.start_date,
-            'end_date': args.end_date,
+            'start_date': start_date,
+            'end_date': end_date,
+            'period': period_name,
             'trading_days': len(data),
             'initial_cash': args.cash,
         }
