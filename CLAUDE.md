@@ -119,9 +119,8 @@ uv run python scripts/run_backtest.py --strategy dual_ma --start-date 2023-01-01
 uv run python scripts/run_analysis.py --strategy rsi --start-date 2023-01-01
 
 # Low drawdown strategy backtest with PDF report (recommended for risk control)
-uv run python scripts/low_drawdown_report.py --symbol 601138 --period 1y    # 近1年
-uv run python scripts/low_drawdown_report.py --symbol 601138 --period 3m    # 近3月
-uv run python scripts/low_drawdown_report.py --symbol 601138 --period 1m    # 近1月
+# Generates a combined PDF report with 3 time periods (1y/3m/1m)
+uv run python scripts/low_drawdown_report.py --symbol 601138 --name "工业富联"
 
 # Interactive strategy optimization
 uv run python scripts/optimize_strategy.py --strategy dual_ma
@@ -160,6 +159,17 @@ This applies to:
 - Chart labels and titles
 - Table headers and content
 - Conclusions and recommendations
+
+### Report Format
+
+**IMPORTANT: All backtest reports must be generated as a single combined PDF containing 3 time periods.**
+
+The report must include:
+- Period 1: Near 1 year (1y)
+- Period 2: Near 3 months (3m)
+- Period 3: Near 1 month (1m)
+
+Each period should have its own performance metrics, charts, and trade summary, but all consolidated into one PDF file.
 
 ### No Emoji Policy
 

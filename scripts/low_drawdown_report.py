@@ -455,6 +455,17 @@ def create_pdf_report(
         textColor=colors.HexColor('#1a5276'),
     )
 
+    subheading_style = ParagraphStyle(
+        'ChineseSubHeading',
+        parent=styles['Heading2'],
+        fontName=chinese_font,
+        fontSize=12,
+        leading=16,
+        spaceBefore=10,
+        spaceAfter=8,
+        textColor=colors.HexColor('#2874a6'),
+    )
+
     normal_style = ParagraphStyle(
         'ChineseNormal',
         parent=styles['Normal'],
@@ -479,9 +490,7 @@ def create_pdf_report(
     # Basic Info
     info_data = [
         ["报告时间", data_info.get('generate_time', '-')],
-        ["数据区间", f"{data_info.get('start_date', '-')} 至 {data_info.get('end_date', '-')}"],
-        ["交易天数", str(data_info.get('trading_days', '-'))],
-        ["初始资金", f"¥{data_info.get('initial_cash', 0):,.0f}"],
+        ["初始资金", f"{data_info.get('initial_cash', 0):,.0f} 元"],
     ]
 
     info_table = Table(info_data, colWidths=[4*cm, 10*cm])
@@ -506,7 +515,7 @@ def create_pdf_report(
         ["最大回撤", f"{result['max_drawdown']:.2%}"],
         ["夏普比率", f"{result['sharpe_ratio']:.2f}"],
         ["胜率", f"{result['win_rate']:.2%}"],
-        ["最终资产", f"¥{result['final_value']:,.2f}"],
+        ["最终资产", f"{result['final_value']:,.2f} 元"],
     ]
 
     perf_table = Table(perf_data, colWidths=[6*cm, 6*cm])
@@ -570,7 +579,7 @@ def create_pdf_report(
             ["买入次数", f"{len(buy_trades)} 次"],
             ["卖出次数", f"{len(sell_trades)} 次"],
             ["盈利次数", f"{len(win_trades)} 次 ({len(win_trades)/len(sell_trades)*100:.1f}%)" if sell_trades else "0 次"],
-            ["已实现盈亏", f"¥{total_profit:,.2f}"],
+            ["已实现盈亏", f"{total_profit:,.2f} 元"],
         ]
 
         summary_table = Table(summary_data, colWidths=[5*cm, 5*cm])
@@ -602,7 +611,7 @@ def create_pdf_report(
                 str(i),
                 str(trade['date']),
                 trade['action'],
-                f"¥{trade['price']:.2f}",
+                f"{trade['price']:.2f} 元",
                 str(trade['shares']),
                 trade.get('reason', '')[:20],
             ])
@@ -674,64 +683,352 @@ def create_pdf_report(
     return output_path
 
 
+def create_combined_pdf_report(
+    stock_code: str,
+    stock_name: str,
+    results: dict,
+    data_info: dict,
+    chart_paths: dict,
+    output_path: Path,
+):
+    """创建整合PDF报告 (包含3个时间周期)"""
+    if not REPORTLAB_AVAILABLE:
+        logger.error("Please install reportlab: uv pip install reportlab matplotlib")
+        return None
+
+    chinese_font = get_chinese_font()
+
+    doc = SimpleDocTemplate(
+        str(output_path),
+        pagesize=A4,
+        rightMargin=1.5*cm,
+        leftMargin=1.5*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm,
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'ChineseTitle',
+        parent=styles['Title'],
+        fontName=chinese_font,
+        fontSize=22,
+        leading=28,
+        alignment=1,
+        spaceAfter=20,
+    )
+
+    heading_style = ParagraphStyle(
+        'ChineseHeading',
+        parent=styles['Heading1'],
+        fontName=chinese_font,
+        fontSize=14,
+        leading=18,
+        spaceBefore=15,
+        spaceAfter=10,
+        textColor=colors.HexColor('#1a5276'),
+    )
+
+    subheading_style = ParagraphStyle(
+        'ChineseSubHeading',
+        parent=styles['Heading2'],
+        fontName=chinese_font,
+        fontSize=12,
+        leading=16,
+        spaceBefore=10,
+        spaceAfter=8,
+        textColor=colors.HexColor('#2874a6'),
+    )
+
+    normal_style = ParagraphStyle(
+        'ChineseNormal',
+        parent=styles['Normal'],
+        fontName=chinese_font,
+        fontSize=10,
+        leading=14,
+        spaceBefore=3,
+        spaceAfter=3,
+    )
+
+    story = []
+
+    # ============ Title Page ============
+    story.append(Spacer(1, 2*cm))
+    story.append(Paragraph(f"{stock_name} ({stock_code})", title_style))
+    story.append(Paragraph("低回撤策略分析报告", title_style))
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph("(近1年 / 近3月 / 近1月)", title_style))
+    story.append(Spacer(1, 1*cm))
+
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+    story.append(Spacer(1, 0.5*cm))
+
+    # Basic Info
+    info_data = [
+        ["报告时间", data_info.get('generate_time', '-')],
+        ["初始资金", f"{data_info.get('initial_cash', 0):,.0f} 元"],
+        ["分析周期", "近1年 / 近3月 / 近1月"],
+    ]
+
+    info_table = Table(info_data, colWidths=[4*cm, 10*cm])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), chinese_font),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.grey),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    story.append(info_table)
+
+    # ============ Performance Comparison ============
+    story.append(PageBreak())
+    story.append(Paragraph("一、多周期绩效对比", heading_style))
+
+    # Comparison table
+    comparison_header = ["指标", "近1年", "近3月", "近1月"]
+    comparison_rows = [comparison_header]
+
+    metrics = [
+        ("总收益率", "total_return", "{:.2%}"),
+        ("最大回撤", "max_drawdown", "{:.2%}"),
+        ("夏普比率", "sharpe_ratio", "{:.2f}"),
+        ("胜率", "win_rate", "{:.2%}"),
+        ("最终资产", "final_value", "{:,.0f} 元"),
+    ]
+
+    for metric_name, metric_key, fmt in metrics:
+        row = [metric_name]
+        for period in ["1y", "3m", "1m"]:
+            if period in results:
+                value = results[period][metric_key]
+                if "元" in fmt:
+                    row.append(fmt.format(value))
+                else:
+                    row.append(fmt.format(value))
+            else:
+                row.append("-")
+        comparison_rows.append(row)
+
+    comparison_table = Table(comparison_rows, colWidths=[3.5*cm, 3.5*cm, 3.5*cm, 3.5*cm])
+    comparison_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), chinese_font),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a5276')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+    ]))
+    story.append(comparison_table)
+
+    # ============ Risk Control Parameters ============
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph("二、风控参数", heading_style))
+
+    risk_data = [
+        ["参数", "数值", "说明"],
+        ["止损线", "1.5%", "单笔交易最大亏损"],
+        ["移动止损", "1.0%", "盈利1%后启动保护"],
+        ["日亏损限制", "1.0%", "单日最大亏损阈值"],
+        ["回撤限制", "2.4%", "组合回撤触发线"],
+        ["仓位比例", "20%", "单次交易资金占比"],
+        ["冷却期", "3天", "止损后等待天数"],
+    ]
+
+    risk_table = Table(risk_data, colWidths=[4*cm, 3*cm, 6*cm])
+    risk_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), chinese_font),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2874a6')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+    ]))
+    story.append(risk_table)
+
+    # ============ Period Details ============
+    period_names = {"1y": "近1年", "3m": "近3月", "1m": "近1月"}
+    section_num = 3
+
+    for period in ["1y", "3m", "1m"]:
+        if period not in results:
+            continue
+
+        result = results[period]
+        period_name = period_names[period]
+        chart_path = chart_paths.get(period)
+
+        story.append(PageBreak())
+        story.append(Paragraph(f"{section_num}、{period_name}详细分析", heading_style))
+
+        # Period info
+        period_info = result.get("period_info", {})
+        story.append(Paragraph(
+            f"数据区间: {period_info.get('start_date', '-')} 至 {period_info.get('end_date', '-')} "
+            f"(共 {period_info.get('trading_days', 0)} 个交易日)",
+            normal_style
+        ))
+        story.append(Spacer(1, 0.3*cm))
+
+        # Performance table
+        perf_data = [
+            ["指标", "数值"],
+            ["总收益率", f"{result['total_return']:.2%}"],
+            ["最大回撤", f"{result['max_drawdown']:.2%}"],
+            ["夏普比率", f"{result['sharpe_ratio']:.2f}"],
+            ["胜率", f"{result['win_rate']:.2%}"],
+            ["最终资产", f"{result['final_value']:,.2f} 元"],
+        ]
+
+        perf_table = Table(perf_data, colWidths=[5*cm, 5*cm])
+        perf_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), chinese_font),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2874a6')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+        ]))
+        story.append(perf_table)
+
+        # Chart
+        if chart_path and chart_path.exists():
+            story.append(Spacer(1, 0.5*cm))
+            img = Image(str(chart_path), width=16*cm, height=11*cm)
+            story.append(img)
+
+        # Trade summary
+        trades = result.get('trades', [])
+        if trades:
+            story.append(Spacer(1, 0.5*cm))
+            story.append(Paragraph("交易汇总", subheading_style))
+
+            buy_trades = [t for t in trades if t['type'] == 'buy']
+            sell_trades = [t for t in trades if t['type'] == 'sell']
+            total_profit = sum(t.get('profit', 0) for t in sell_trades)
+            win_trades = [t for t in sell_trades if t.get('profit', 0) > 0]
+
+            trade_summary = f"买入 {len(buy_trades)} 次, 卖出 {len(sell_trades)} 次, "
+            if sell_trades:
+                trade_summary += f"胜率 {len(win_trades)/len(sell_trades)*100:.1f}%, "
+            trade_summary += f"已实现盈亏 {total_profit:,.2f} 元"
+            story.append(Paragraph(trade_summary, normal_style))
+
+        section_num += 1
+
+    # ============ Conclusion ============
+    story.append(PageBreak())
+    story.append(Paragraph(f"{section_num}、结论与建议", heading_style))
+
+    # Summary conclusions
+    conclusions = ["<b>多周期综合分析:</b>"]
+
+    for period in ["1y", "3m", "1m"]:
+        if period in results:
+            r = results[period]
+            status = "达标" if r['max_drawdown'] <= 0.03 else "未达标"
+            conclusions.append(
+                f"- {period_names[period]}: 收益 {r['total_return']:.2%}, "
+                f"回撤 {r['max_drawdown']:.2%} ({status})"
+            )
+
+    conclusions.append("")
+    conclusions.append("<b>策略类型:</b> 趋势跟踪 + 严格风控")
+    conclusions.append("<b>目标回撤:</b> 3.0%")
+
+    for conclusion in conclusions:
+        story.append(Paragraph(conclusion, normal_style))
+        story.append(Spacer(1, 0.2*cm))
+
+    # Disclaimer
+    story.append(Spacer(1, 1*cm))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+    story.append(Spacer(1, 0.5*cm))
+
+    disclaimer_style = ParagraphStyle(
+        'Disclaimer',
+        parent=normal_style,
+        fontSize=9,
+        textColor=colors.grey,
+        alignment=1,
+    )
+
+    story.append(Paragraph("<b>免责声明</b>", disclaimer_style))
+    story.append(Paragraph("本报告仅供参考，不构成投资建议。", disclaimer_style))
+    story.append(Paragraph("过往业绩不代表未来表现，投资有风险，入市需谨慎。", disclaimer_style))
+    story.append(Spacer(1, 0.5*cm))
+    story.append(Paragraph(f"报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", disclaimer_style))
+
+    doc.build(story)
+    logger.info(f"Combined PDF report generated: {output_path}")
+
+    return output_path
+
+
 def main():
-    """Main function"""
+    """Main function - Generate combined report with 3 periods (1y/3m/1m)"""
     import argparse
     from datetime import datetime, timedelta
 
-    # Calculate default dates based on current date
-    today = datetime.now()
-    default_end_date = today.strftime("%Y-%m-%d")
-    default_start_date_1y = (today - timedelta(days=365)).strftime("%Y-%m-%d")
-    default_start_date_3m = (today - timedelta(days=90)).strftime("%Y-%m-%d")
-    default_start_date_1m = (today - timedelta(days=30)).strftime("%Y-%m-%d")
-
-    parser = argparse.ArgumentParser(description="低回撤策略回测与PDF报告生成")
+    parser = argparse.ArgumentParser(description="低回撤策略回测与PDF报告生成 (整合3个时间周期)")
     parser.add_argument("--symbol", type=str, default="601138", help="股票代码")
     parser.add_argument("--name", type=str, default="工业富联", help="股票名称")
-    parser.add_argument("--period", type=str, default="1y",
-                        choices=["1y", "3m", "1m"],
-                        help="回测周期: 1y(近1年), 3m(近3月), 1m(近1月)")
-    parser.add_argument("--start-date", type=str, default=None, help="开始日期(覆盖--period)")
-    parser.add_argument("--end-date", type=str, default=None, help="结束日期(覆盖--period)")
     parser.add_argument("--cash", type=float, default=50000, help="初始资金(默认5万)")
     parser.add_argument("--target-drawdown", type=float, default=0.03, help="目标最大回撤")
     args = parser.parse_args()
 
-    # Determine date range based on period or explicit dates
-    if args.start_date and args.end_date:
-        start_date = args.start_date
-        end_date = args.end_date
-    else:
-        end_date = args.end_date or default_end_date
-        if args.period == "1y":
-            start_date = default_start_date_1y
-        elif args.period == "3m":
-            start_date = default_start_date_3m
-        else:  # 1m
-            start_date = default_start_date_1m
+    # Calculate dates based on current date
+    today = datetime.now()
+    end_date = today.strftime("%Y-%m-%d")
 
-    period_names = {"1y": "近1年", "3m": "近3月", "1m": "近1月"}
-    period_name = period_names.get(args.period, args.period)
+    periods = {
+        "1y": {
+            "name": "近1年",
+            "days": 365,
+            "start": (today - timedelta(days=365)).strftime("%Y-%m-%d"),
+        },
+        "3m": {
+            "name": "近3月",
+            "days": 90,
+            "start": (today - timedelta(days=90)).strftime("%Y-%m-%d"),
+        },
+        "1m": {
+            "name": "近1月",
+            "days": 30,
+            "start": (today - timedelta(days=30)).strftime("%Y-%m-%d"),
+        },
+    }
 
-    logger.info(f"[INFO] 获取 {args.symbol} 数据 ({period_name}: {start_date} ~ {end_date})...")
+    logger.info(f"[INFO] 开始获取 {args.symbol} ({args.name}) 数据...")
 
-    # Fetch data
+    # Fetch data (get 1 year data, will be filtered for shorter periods)
     loader = AkshareLoader()
-    data = loader.get_stock_data(
+    full_data = loader.get_stock_data(
         symbol=args.symbol,
-        start_date=start_date,
+        start_date=periods["1y"]["start"],
         end_date=end_date,
         adjust="qfq",
     )
 
-    if data is None or len(data) == 0:
+    if full_data is None or len(full_data) == 0:
         logger.error(f"[ERROR] 无法获取 {args.symbol} 数据")
         return 1
 
-    logger.info(f"[OK] 获取到 {len(data)} 条数据")
+    logger.info(f"[OK] 获取到 {len(full_data)} 条数据 (近1年)")
 
-    # Create strategy
+    # Create strategy and runner
     strategy = LowDrawdownStrategy(
         ma_short=5,
         ma_long=15,
@@ -741,7 +1038,6 @@ def main():
         trailing_stop_pct=0.01,
     )
 
-    # Create backtest runner
     runner = LowDrawdownBacktestRunner(
         stop_loss_pct=0.015,
         trailing_stop_pct=0.01,
@@ -750,64 +1046,76 @@ def main():
         position_size_pct=0.2,
     )
 
-    # Run backtest
-    logger.info(f"[INFO] 开始回测, 目标最大回撤: {args.target_drawdown:.1%}")
-    result = runner.run(data, strategy, args.cash)
+    # Run backtest for each period
+    results = {}
+    chart_paths = {}
 
-    # Print results
-    print("\n" + "=" * 60)
-    print("低回撤策略回测结果")
-    print("=" * 60)
-    print(f"股票: {args.name} ({args.symbol})")
-    print(f"周期: {period_name} ({start_date} -> {end_date})")
-    print(f"初始资金: {args.cash:,.0f} 元")
-    print("-" * 60)
-    print(f"总收益率:     {result['total_return']:>10.2%}")
-    print(f"最大回撤:     {result['max_drawdown']:>10.2%}")
-    print(f"夏普比率:     {result['sharpe_ratio']:>10.2f}")
-    print(f"胜率:         {result['win_rate']:>10.2%}")
-    print(f"最终资产:     {result['final_value']:>10,.2f} 元")
-    print("-" * 60)
-
-    if result["max_drawdown"] <= args.target_drawdown:
-        print(f"[OK] 达标: 最大回撤 {result['max_drawdown']:.2%} <= 目标 {args.target_drawdown:.1%}")
-    else:
-        print(f"[WARN] 未达标: 最大回撤 {result['max_drawdown']:.2%} > 目标 {args.target_drawdown:.1%}")
-
-    # Generate chart and PDF report
     output_dir = Path("reports")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chart_path = output_dir / f"{args.symbol}_{args.period}_chart.png"
-    pdf_path = output_dir / f"{args.symbol}_{args.period}_report.pdf"
+    print("\n" + "=" * 60)
+    print("低回撤策略多周期回测结果")
+    print("=" * 60)
+    print(f"股票: {args.name} ({args.symbol})")
+    print(f"初始资金: {args.cash:,.0f} 元")
+    print("-" * 60)
 
-    if REPORTLAB_AVAILABLE:
+    for period_key, period_info in periods.items():
+        start_date = period_info["start"]
+        period_name = period_info["name"]
+
+        # Filter data for this period
+        full_data["date"] = pd.to_datetime(full_data["date"])
+        period_data = full_data[full_data["date"] >= start_date].copy()
+
+        if len(period_data) == 0:
+            logger.warning(f"[WARN] {period_name}无数据，跳过")
+            continue
+
+        logger.info(f"[INFO] 回测 {period_name}...")
+
+        result = runner.run(period_data, strategy, args.cash)
+        result["period_info"] = {
+            "start_date": start_date,
+            "end_date": end_date,
+            "trading_days": len(period_data),
+        }
+        results[period_key] = result
+
         # Generate chart
-        logger.info("[INFO] 生成图表...")
-        generate_chart(result['portfolio_values'], chart_path)
+        chart_path = output_dir / f"{args.symbol}_{period_key}_chart.png"
+        if REPORTLAB_AVAILABLE:
+            generate_chart(result['portfolio_values'], chart_path)
+            chart_paths[period_key] = chart_path
 
-        # Generate PDF report
+        # Print result
+        status = "[OK]" if result["max_drawdown"] <= args.target_drawdown else "[WARN]"
+        print(f"{period_name}: 收益 {result['total_return']:>7.2%}, "
+              f"回撤 {result['max_drawdown']:>6.2%}, "
+              f"夏普 {result['sharpe_ratio']:>5.2f} {status}")
+
+    print("-" * 60)
+
+    # Generate combined PDF report
+    if REPORTLAB_AVAILABLE and results:
+        pdf_path = output_dir / f"{args.symbol}_combined_report.pdf"
+
         data_info = {
             'generate_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'start_date': start_date,
-            'end_date': end_date,
-            'period': period_name,
-            'trading_days': len(data),
             'initial_cash': args.cash,
         }
 
-        logger.info("[INFO] 生成PDF报告...")
-        create_pdf_report(
+        logger.info("[INFO] 生成整合PDF报告...")
+        create_combined_pdf_report(
             stock_code=args.symbol,
             stock_name=args.name,
-            result=result,
+            results=results,
             data_info=data_info,
-            chart_path=chart_path,
+            chart_paths=chart_paths,
             output_path=pdf_path,
         )
 
-        print(f"\n[OK] 图表已保存: {chart_path}")
-        print(f"[OK] PDF报告已保存: {pdf_path}")
+        print(f"\n[OK] 整合PDF报告已保存: {pdf_path}")
     else:
         print("\n[WARN] PDF生成跳过 (reportlab未安装)")
         print("安装命令: uv pip install reportlab matplotlib")
