@@ -8,9 +8,12 @@ from src.strategy.advanced import (
     RSIStrategy,
     BollingerBandsStrategy,
     BreakoutStrategy,
+    OscillationStrategy,
     get_strategy,
     list_strategies,
 )
+from src.strategy.regime import RegimeDetector, MarketRegime, MarketState, get_recommended_strategy
+from src.strategy.adaptive import AdaptiveStrategy, DynamicAllocationStrategy
 
 __all__ = [
     # 基础策略
@@ -24,6 +27,15 @@ __all__ = [
     "RSIStrategy",
     "BollingerBandsStrategy",
     "BreakoutStrategy",
+    "OscillationStrategy",
+    # 自适应策略
+    "AdaptiveStrategy",
+    "DynamicAllocationStrategy",
+    # 市场状态
+    "RegimeDetector",
+    "MarketRegime",
+    "MarketState",
+    "get_recommended_strategy",
     # 工具函数
     "get_strategy",
     "list_strategies",

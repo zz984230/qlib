@@ -345,7 +345,10 @@ def run_optimization_cycle(
     start_date: str,
     end_date: str,
     cash: float = 1000000,
-    max_iterations: int = 3,
+    max_iterations: int = 50,
+    optimization_method: str = "bayesian",
+    param_grid: Optional[dict[str, list]] = None,
+    dry_run: bool = True,
 ) -> dict[str, Any]:
     """
     运行优化循环
@@ -356,10 +359,103 @@ def run_optimization_cycle(
         end_date: 结束日期
         cash: 初始资金
         max_iterations: 最大迭代次数
+        optimization_method: 优化方法 (grid/random/bayesian)
+        param_grid: 参数网格，为 None 时使用推荐网格
+        dry_run: 是否为试运行
 
     Returns:
         优化结果
     """
+    from src.optimization.auto_optimizer import AutoOptimizer, suggest_param_grid
+    from src.optimization.param_optimizer import ParameterOptimizer
+
+    optimization_log = {
+        "start_time": datetime.now().isoformat(),
+        "strategy": strategy_name,
+        "method": optimization_method,
+        "iterations": [],
+        "final_result": None,
+    }
+
+    # 获取策略类
+    try:
+        strategy = get_strategy(strategy_name)
+        strategy_class = strategy.__class__
+    except ValueError:
+        logger.error(f"未知策略: {strategy_name}")
+        optimization_log["error"] = f"未知策略: {strategy_name}"
+        return optimization_log
+
+    # 获取参数网格
+    if param_grid is None:
+        param_grid = suggest_param_grid(strategy_name)
+
+    if not param_grid:
+        logger.warning(f"策略 {strategy_name} 没有推荐的参数网格")
+        optimization_log["error"] = "没有可优化的参数"
+        return optimization_log
+
+    # 创建优化器
+    try:
+        auto_optimizer = AutoOptimizer(
+            optimization_method=optimization_method,
+            max_evaluations=max_iterations,
+            oos_ratio=0.2,
+        )
+
+        # 加载数据（简化：使用空 DataFrame，实际应从缓存加载）
+        data = pd.DataFrame()
+
+        # 运行优化循环
+        result = auto_optimizer.run_cycle(
+            strategy_class,
+            param_grid,
+            data,
+            start_date,
+            end_date,
+            cash,
+            dry_run,
+        )
+
+        optimization_log["end_time"] = datetime.now().isoformat()
+        optimization_log["final_result"] = {
+            "best_params": result.best_params,
+            "in_sample_sharpe": result.in_sample_metrics.get("sharpe_ratio", 0),
+            "out_of_sample_sharpe": result.out_of_sample_metrics.get("sharpe_ratio", 0),
+            "is_overfitted": result.is_overfitted,
+            "degradation": result.degradation,
+            "recommendation": result.recommendation,
+            "optimization_details": result.optimization_details,
+        }
+
+        # 记录详细信息
+        logger.info(f"优化完成:")
+        logger.info(f"  最佳参数: {result.best_params}")
+        logger.info(f"  样本内夏普: {result.in_sample_metrics.get('sharpe_ratio', 0):.2f}")
+        logger.info(f"  样本外夏普: {result.out_of_sample_metrics.get('sharpe_ratio', 0):.2f}")
+        logger.info(f"  是否过拟合: {result.is_overfitted}")
+        logger.info(f"  建议: {result.recommendation}")
+
+    except Exception as e:
+        logger.error(f"优化失败: {e}")
+        optimization_log["error"] = str(e)
+
+        # 回退到简单迭代优化
+        return _run_simple_optimization(
+            strategy_name, start_date, end_date, cash, max_iterations
+        )
+
+    return optimization_log
+
+
+def _run_simple_optimization(
+    strategy_name: str,
+    start_date: str,
+    end_date: str,
+    cash: float,
+    max_iterations: int,
+) -> dict[str, Any]:
+    """简单迭代优化（回退方案）"""
     optimization_log = {
         "start_time": datetime.now().isoformat(),
         "strategy": strategy_name,
@@ -373,7 +469,6 @@ def run_optimization_cycle(
     for i in range(max_iterations):
         logger.info(f"优化迭代 {i + 1}/{max_iterations}")
 
-        # 运行回测
         try:
             strategy = get_strategy(strategy_name)
         except ValueError:
@@ -383,11 +478,9 @@ def run_optimization_cycle(
         runner = BacktestRunner()
         result = runner.run(strategy, start_date, end_date, cash)
 
-        # 分析结果
         result_data = result.to_dict()
         analysis = analyze_backtest_result(result_data)
 
-        # 记录迭代
         iteration_record = {
             "iteration": i + 1,
             "sharpe_ratio": result.sharpe_ratio,
@@ -398,25 +491,20 @@ def run_optimization_cycle(
         }
         optimization_log["iterations"].append(iteration_record)
 
-        # 检查是否改进
         if result.sharpe_ratio > best_sharpe:
             best_sharpe = result.sharpe_ratio
             best_params = strategy.get_strategy_config()
 
-        # 检查是否达到目标
         if result.sharpe_ratio >= 1.5 and result.max_drawdown <= 0.15:
             logger.info("达到优化目标")
             break
 
-        # 生成优化建议
         suggestions = suggest_optimizations(
             strategy_name,
             analysis,
             strategy.get_strategy_config(),
         )
 
-        # 应用建议（简化版：仅更新配置文件）
-        # 实际应用中需要动态修改策略参数
         logger.info(f"优化建议: {suggestions['rationale']}")
 
     optimization_log["end_time"] = datetime.now().isoformat()

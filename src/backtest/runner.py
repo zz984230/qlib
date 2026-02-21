@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from src.risk.position_sizer import PositionSizer
+from src.risk.risk_controller import RiskController, RiskAction
 from src.strategy.base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -272,8 +274,18 @@ class BacktestRunner:
         start_date: str,
         end_date: str,
         cash: float,
+        enable_risk_control: bool = True,
     ) -> BacktestResult:
-        """向量化回测（使用缓存数据）"""
+        """
+        向量化回测（使用缓存数据）
+
+        Args:
+            strategy: 策略实例
+            start_date: 开始日期
+            end_date: 结束日期
+            cash: 初始资金
+            enable_risk_control: 是否启用风险控制
+        """
         # 加载缓存数据
         data_dir = Path("data/raw")
         parquet_files = list(data_dir.glob("*.parquet"))
@@ -294,42 +306,170 @@ class BacktestRunner:
         # 生成日期范围
         dates = pd.date_range(start=start_date, end=end_date, freq="B")
 
+        # 初始化风险控制模块
+        position_sizer = None
+        risk_controller = None
+        if enable_risk_control:
+            try:
+                position_sizer = PositionSizer(method="volatility_target")
+                risk_controller = RiskController()
+                logger.info("风险控制模块已启用")
+            except Exception as e:
+                logger.warning(f"风险控制模块初始化失败: {e}")
+                enable_risk_control = False
+
         # 初始化组合
         portfolio_value = pd.Series(index=dates, dtype=float)
         portfolio_value.iloc[0] = cash
+        cash_balance = cash
+        positions = {}  # {symbol: {shares, entry_price, highest_price}}
 
-        # 获取策略配置
-        strategy_config = strategy.get_strategy_config()
-        topk = strategy_config.get("topk", 30)
-
-        # 简化的回测逻辑：等权持有 topk 只股票
-        position_value = cash
-        holdings = {}
+        # 交易记录
+        trade_records = []
+        risk_events = []
 
         for i, date in enumerate(dates[1:], 1):
-            # 计算当日收益率（使用简单市场收益）
-            daily_return = 0.0
-            valid_stocks = 0
+            prev_date = dates[i - 1]
+            daily_pnl = 0.0
 
-            for symbol, df in all_data.items():
-                if date in df.index:
-                    if i > 0 and dates[i - 1] in df.index:
-                        prev_close = df.loc[dates[i - 1], "close"]
-                        curr_close = df.loc[date, "close"]
-                        if prev_close > 0:
-                            daily_return += (curr_close - prev_close) / prev_close
-                            valid_stocks += 1
+            # 1. 更新持仓市值和最高价
+            position_value = 0.0
+            for symbol, pos in positions.items():
+                if symbol in all_data and date in all_data[symbol].index:
+                    curr_price = all_data[symbol].loc[date, "close"]
+                    pos["highest_price"] = max(pos["highest_price"], curr_price)
+                    position_value += pos["shares"] * curr_price
 
-            if valid_stocks > 0:
-                daily_return /= valid_stocks
+                    # 计算日盈亏
+                    if prev_date in all_data[symbol].index:
+                        prev_price = all_data[symbol].loc[prev_date, "close"]
+                        daily_pnl += pos["shares"] * (curr_price - prev_price)
 
-            position_value *= (1 + daily_return)
-            portfolio_value.iloc[i] = position_value
+            total_value = cash_balance + position_value
+            portfolio_value.iloc[i] = total_value
+
+            # 2. 风险检查 - 组合层面
+            if enable_risk_control and risk_controller:
+                risk_result = risk_controller.check_portfolio_risk(
+                    positions, total_value, daily_pnl
+                )
+                if not risk_result.passed:
+                    risk_events.append({
+                        "date": str(date.date()),
+                        "type": "portfolio",
+                        "action": risk_result.action.value,
+                        "message": risk_result.message,
+                    })
+                    # 执行减仓
+                    if risk_result.position_adjustment < 1.0:
+                        for symbol in list(positions.keys()):
+                            reduce_ratio = 1.0 - risk_result.position_adjustment
+                            reduce_shares = int(positions[symbol]["shares"] * reduce_ratio)
+                            if reduce_shares > 0:
+                                curr_price = all_data[symbol].loc[date, "close"]
+                                cash_balance += reduce_shares * curr_price
+                                positions[symbol]["shares"] -= reduce_shares
+                                trade_records.append({
+                                    "date": str(date.date()),
+                                    "symbol": symbol,
+                                    "action": "reduce",
+                                    "shares": reduce_shares,
+                                    "price": curr_price,
+                                    "reason": "risk_control",
+                                })
+
+            # 3. 风险检查 - 单股止损
+            if enable_risk_control and risk_controller:
+                for symbol in list(positions.keys()):
+                    pos = positions[symbol]
+                    if symbol in all_data and date in all_data[symbol].index:
+                        curr_price = all_data[symbol].loc[date, "close"]
+                        pos_value = pos["shares"] * curr_price
+
+                        risk_result = risk_controller.check_position_risk(
+                            symbol, curr_price, pos_value
+                        )
+                        if not risk_result.passed:
+                            risk_events.append({
+                                "date": str(date.date()),
+                                "type": "position",
+                                "symbol": symbol,
+                                "action": risk_result.action.value,
+                                "message": risk_result.message,
+                            })
+                            # 执行止损
+                            cash_balance += pos["shares"] * curr_price
+                            trade_records.append({
+                                "date": str(date.date()),
+                                "symbol": symbol,
+                                "action": "sell",
+                                "shares": pos["shares"],
+                                "price": curr_price,
+                                "reason": risk_result.action.value,
+                            })
+                            del positions[symbol]
+                            risk_controller.remove_position(symbol)
+
+            # 4. 生成新信号（如果没有暂停交易）
+            if not enable_risk_control or not risk_controller or not risk_controller.is_trading_suspended():
+                signals = {}
+                for symbol, df in all_data.items():
+                    if date in df.index:
+                        # 使用截止到当日的数据生成信号
+                        hist_data = df.loc[:date]
+                        if len(hist_data) > 0:
+                            signal = strategy.generate_signals(hist_data)
+                            if len(signal) > 0 and signal[-1] > 0:
+                                signals[symbol] = signal[-1]
+
+                # 5. 计算仓位
+                if signals and position_sizer:
+                    prices = {
+                        s: all_data[s].loc[date, "close"]
+                        for s in signals
+                        if s in all_data and date in all_data[s].index
+                    }
+
+                    new_positions = position_sizer.calculate_positions(
+                        signals, total_value, all_data, prices
+                    )
+                    new_positions = position_sizer.apply_limits(new_positions)
+
+                    # 执行交易
+                    for pos in new_positions:
+                        symbol = pos.symbol
+                        if symbol not in positions and pos.shares > 0:
+                            # 买入
+                            cost = pos.shares * prices[symbol]
+                            if cost <= cash_balance:
+                                cash_balance -= cost
+                                positions[symbol] = {
+                                    "shares": pos.shares,
+                                    "entry_price": prices[symbol],
+                                    "highest_price": prices[symbol],
+                                }
+                                if risk_controller:
+                                    risk_controller.register_position(
+                                        symbol, prices[symbol], pos.shares
+                                    )
+                                trade_records.append({
+                                    "date": str(date.date()),
+                                    "symbol": symbol,
+                                    "action": "buy",
+                                    "shares": pos.shares,
+                                    "price": prices[symbol],
+                                    "reason": "signal",
+                                })
 
         result = BacktestResult()
         result.portfolio_value = portfolio_value
         result.start_date = start_date
         result.end_date = end_date
+        result.trades = pd.DataFrame(trade_records) if trade_records else None
+        result.metrics = {
+            "risk_events": len(risk_events),
+            "total_trades": len(trade_records),
+        }
 
         return result
 
