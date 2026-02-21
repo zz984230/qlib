@@ -12,6 +12,9 @@ AI-driven quantitative investment strategy system for A-share market (China stoc
 # Install dependencies
 uv sync
 
+# Install PDF report dependencies (optional)
+uv pip install reportlab matplotlib
+
 # Run tests
 uv run pytest tests/ -v
 
@@ -78,6 +81,24 @@ All configs in `configs/` are YAML:
 3. Implement `generate_signals(data: DataFrame)` returning np.ndarray
 4. Register in `STRATEGY_REGISTRY` dict and export in `__init__.py`
 
+### Low Drawdown Strategy
+
+For strict risk control (target max drawdown <= 3%), use `low_drawdown_report.py`:
+
+**Risk Control Parameters:**
+- Stop Loss: 1.5%
+- Trailing Stop: 1.0% (triggered after 1% profit)
+- Daily Loss Limit: 1.0%
+- Portfolio Drawdown Limit: 2.4%
+- Position Size: 20% per trade
+- Cooldown Period: 3 days after stop loss
+
+**Signal Conditions:**
+- Price must be above long-term MA
+- Short-term MA trending up
+- RSI not overbought (< 65)
+- Golden cross or RSI oversold entry
+
 ### Adding New Factor
 
 1. Create class inheriting `BaseFactor` in appropriate `src/strategy/factors/` submodule
@@ -89,21 +110,35 @@ All configs in `configs/` are YAML:
 
 ```bash
 # Update data from akshare
-python scripts/update_data.py --market csi300 --verify
+uv run python scripts/update_data.py --market csi300 --verify
 
-# Run backtest
-python scripts/run_backtest.py --strategy dual_ma --start-date 2023-01-01 --save
+# Run standard backtest
+uv run python scripts/run_backtest.py --strategy dual_ma --start-date 2023-01-01 --save
 
-# Generate analysis report with charts
-python scripts/run_analysis.py --strategy rsi
+# Run analysis pipeline (backtest + report)
+uv run python scripts/run_analysis.py --strategy rsi --start-date 2023-01-01
+
+# Low drawdown strategy backtest with PDF report (recommended for risk control)
+uv run python scripts/low_drawdown_report.py --symbol 601138 --start-date 2024-01-01 --end-date 2025-02-20 --target-drawdown 0.03
 
 # Interactive strategy optimization
-python scripts/optimize_strategy.py --strategy dual_ma
+uv run python scripts/optimize_strategy.py --strategy dual_ma
 
 # AI workflow automation
-python scripts/run_agent.py --mode daily     # Daily workflow
-python scripts/run_agent.py --mode search    # Search new strategies
+uv run python scripts/run_agent.py --mode daily     # Daily workflow
+uv run python scripts/run_agent.py --mode search    # Search new strategies
 ```
+
+### Script Descriptions
+
+| Script | Description |
+|--------|-------------|
+| `update_data.py` | Fetch stock data from akshare, save as parquet cache |
+| `run_backtest.py` | Standard strategy backtest with qlib/vectorized engine |
+| `run_analysis.py` | Complete analysis pipeline: backtest + performance report |
+| `low_drawdown_report.py` | Low drawdown strategy (target 3%) + PDF report generation |
+| `optimize_strategy.py` | Interactive parameter optimization |
+| `run_agent.py` | AI-powered automation for strategy analysis |
 
 ## Key Patterns
 
@@ -111,3 +146,21 @@ python scripts/run_agent.py --mode search    # Search new strategies
 - Factory functions (`get_strategy()`, `get_factor()`)
 - YAML configuration driven behavior
 - Fallback from qlib native to simple backtest when qlib unavailable
+
+## Coding Standards
+
+### No Emoji Policy
+
+**IMPORTANT: Do NOT use emoji in any code, scripts, comments, or documentation files.**
+
+Emoji characters cause encoding errors on Windows systems (GBK codec issues) and should be avoided entirely. This includes:
+- Python scripts (.py)
+- Markdown files (.md)
+- Shell scripts (.sh)
+- Configuration files
+- All skill-related files
+
+Use plain text alternatives instead:
+- Use `[OK]`, `[WARN]`, `[ERROR]` instead of emoji status indicators
+- Use `->`, `=>`, `-->` instead of arrow emoji
+- Use `*`, `-`, `+` for bullet points instead of emoji bullets
