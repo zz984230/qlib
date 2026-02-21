@@ -1,0 +1,26 @@
+# 数据源配置
+market: "cn"
+universe: "csi300"  # 沪深300
+frequency: "day"
+start_date: "2020-01-01"
+end_date: null  # null 表示使用当前日期
+
+# 数据字段
+fields:
+  - open
+  - high
+  - low
+  - close
+  - volume
+  - amount
+
+# akshare 配置
+akshare:
+  adjust: "qfq"  # 前复权
+  retry_times: 3
+  retry_delay: 1  # 秒
+
+# 缓存配置
+cache:
+  enabled: true
+  expire_days: 1

@@ -1,0 +1,34 @@
+# 风险控制配置
+
+# 回测过拟合防范
+risk_controls:
+  # 样本外测试
+  out_of_sample_ratio: 0.2
+  walk_forward_windows: 5
+
+  # 复杂度限制
+  max_factor_count: 10
+  max_model_depth: 5
+
+  # 交易成本模拟
+  commission: 0.0003  # 万三佣金
+  slippage: 0.0001    # 滑点
+  stamp_duty: 0.001   # 印花税（仅卖出）
+
+# 仓位限制
+position_limits:
+  max_single_position: 0.10   # 单股最大 10%
+  max_sector_position: 0.30   # 单行业最大 30%
+  max_total_position: 0.95    # 最大总仓位 95%
+
+# 风险告警
+risk_alerts:
+  daily_loss_limit: 0.03      # 单日亏损 3% 止损
+  drawdown_limit: 0.15        # 回撤 15% 暂停交易
+
+# AI 优化触发条件
+optimization_triggers:
+  max_drawdown_exceeds: 0.15
+  sharpe_below: 1.0
+  days_since_last_optimization: 7
+  manual_trigger: true

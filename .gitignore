@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+
+# Project specific - data files
+data/raw/*.parquet
+data/qlib/features/
+data/qlib/calendars/
+data/qlib/logs/
+data/qlib/*.txt
+data/results/*.json
+reports/*.pdf
+reports/figures/*.png
+logs/**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv
+.uv/
+uv.lock
+
+# Claude Code
+.claude/

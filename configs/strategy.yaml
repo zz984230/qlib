@@ -1,0 +1,40 @@
+# 策略参数配置
+strategy:
+  name: "base_strategy"
+  type: "TopkDropout"  # qlib 内置策略类型
+
+  # 持仓参数
+  topk: 30  # 持仓股票数量
+  n_drop: 5  # 每次调仓替换数量
+
+  # 信号参数
+  signal_type: "prediction"  # prediction / rank
+
+  # 交易参数
+  trade_cost: 0.003  # 交易成本 0.3%
+
+# 模型配置
+model:
+  class: "LGBModel"
+  params:
+    learning_rate: 0.01
+    max_depth: 5
+    n_estimators: 1000
+    num_leaves: 31
+    colsample_bytree: 0.8
+    subsample: 0.8
+
+# 因子配置
+factors:
+  - name: "close_0"
+    expr: "$close"
+  - name: "return_1"
+    expr: "Ref($close, 1) / $close - 1"
+  - name: "volume_ratio"
+    expr: "$volume / Mean($volume, 20)"
+
+# 回测配置
+backtest:
+  start_time: "2022-01-01"
+  end_time: "2024-12-31"
+  cash: 1000000  # 初始资金 100 万

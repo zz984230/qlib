@@ -1,0 +1,12 @@
+# Qlib 基础配置
+provider_uri: "data/qlib"
+region: "cn"
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+
+# 日志级别
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
