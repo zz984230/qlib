@@ -359,11 +359,11 @@ def generate_chart(pv_df: pd.DataFrame, output_path: Path):
 
     # 净值曲线
     ax1 = axes[0, 0]
-    ax1.plot(pv_df.index, pv_df['value'] / pv_df['value'].iloc[0], 'b-', linewidth=1.5, label='Strategy')
+    ax1.plot(pv_df.index, pv_df['value'] / pv_df['value'].iloc[0], 'b-', linewidth=1.5, label='策略净值')
     ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
-    ax1.set_title('NAV Curve', fontsize=12)
-    ax1.set_xlabel('Date')
-    ax1.set_ylabel('NAV')
+    ax1.set_title('净值曲线', fontsize=12)
+    ax1.set_xlabel('日期')
+    ax1.set_ylabel('净值')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
@@ -373,10 +373,10 @@ def generate_chart(pv_df: pd.DataFrame, output_path: Path):
     drawdown = (cummax - pv_df['value']) / cummax * 100
     ax2.fill_between(pv_df.index, 0, -drawdown, color='red', alpha=0.3)
     ax2.plot(pv_df.index, -drawdown, 'r-', linewidth=1)
-    ax2.axhline(y=-3, color='orange', linestyle='--', label='Target -3%')
-    ax2.set_title('Drawdown Curve', fontsize=12)
-    ax2.set_xlabel('Date')
-    ax2.set_ylabel('Drawdown (%)')
+    ax2.axhline(y=-3, color='orange', linestyle='--', label='目标回撤 -3%')
+    ax2.set_title('回撤曲线', fontsize=12)
+    ax2.set_xlabel('日期')
+    ax2.set_ylabel('回撤 (%)')
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
@@ -384,20 +384,20 @@ def generate_chart(pv_df: pd.DataFrame, output_path: Path):
     ax3 = axes[1, 0]
     returns = pv_df['value'].pct_change().dropna() * 100
     ax3.hist(returns, bins=50, color='steelblue', alpha=0.7, edgecolor='white')
-    ax3.axvline(x=returns.mean(), color='red', linestyle='--', label=f'Mean: {returns.mean():.2f}%')
-    ax3.set_title('Daily Return Distribution', fontsize=12)
-    ax3.set_xlabel('Daily Return (%)')
-    ax3.set_ylabel('Frequency')
+    ax3.axvline(x=returns.mean(), color='red', linestyle='--', label=f'均值: {returns.mean():.2f}%')
+    ax3.set_title('日收益率分布', fontsize=12)
+    ax3.set_xlabel('日收益率 (%)')
+    ax3.set_ylabel('频次')
     ax3.legend()
     ax3.grid(True, alpha=0.3)
 
     # 现金 vs 持仓
     ax4 = axes[1, 1]
     ax4.stackplot(pv_df.index, pv_df['cash'], pv_df['position'] * pv_df['price'],
-                  labels=['Cash', 'Position'], colors=['#2ecc71', '#3498db'], alpha=0.8)
-    ax4.set_title('Capital Allocation', fontsize=12)
-    ax4.set_xlabel('Date')
-    ax4.set_ylabel('Value')
+                  labels=['现金', '持仓'], colors=['#2ecc71', '#3498db'], alpha=0.8)
+    ax4.set_title('资金分配', fontsize=12)
+    ax4.set_xlabel('日期')
+    ax4.set_ylabel('金额')
     ax4.legend(loc='upper left')
     ax4.grid(True, alpha=0.3)
 
@@ -470,7 +470,7 @@ def create_pdf_report(
     # Title Page
     story.append(Spacer(1, 2*cm))
     story.append(Paragraph(f"{stock_name} ({stock_code})", title_style))
-    story.append(Paragraph("Low Drawdown Strategy Report", title_style))
+    story.append(Paragraph("低回撤策略分析报告", title_style))
     story.append(Spacer(1, 1*cm))
 
     story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
@@ -478,10 +478,10 @@ def create_pdf_report(
 
     # Basic Info
     info_data = [
-        ["Report Time", data_info.get('generate_time', '-')],
-        ["Data Period", f"{data_info.get('start_date', '-')} to {data_info.get('end_date', '-')}"],
-        ["Trading Days", str(data_info.get('trading_days', '-'))],
-        ["Initial Capital", f"${data_info.get('initial_cash', 0):,.0f}"],
+        ["报告时间", data_info.get('generate_time', '-')],
+        ["数据区间", f"{data_info.get('start_date', '-')} 至 {data_info.get('end_date', '-')}"],
+        ["交易天数", str(data_info.get('trading_days', '-'))],
+        ["初始资金", f"¥{data_info.get('initial_cash', 0):,.0f}"],
     ]
 
     info_table = Table(info_data, colWidths=[4*cm, 10*cm])
@@ -498,15 +498,15 @@ def create_pdf_report(
 
     # Performance Summary
     story.append(PageBreak())
-    story.append(Paragraph("1. Performance Summary", heading_style))
+    story.append(Paragraph("一、绩效摘要", heading_style))
 
     perf_data = [
-        ["Metric", "Value"],
-        ["Total Return", f"{result['total_return']:.2%}"],
-        ["Max Drawdown", f"{result['max_drawdown']:.2%}"],
-        ["Sharpe Ratio", f"{result['sharpe_ratio']:.2f}"],
-        ["Win Rate", f"{result['win_rate']:.2%}"],
-        ["Final Value", f"${result['final_value']:,.2f}"],
+        ["指标", "数值"],
+        ["总收益率", f"{result['total_return']:.2%}"],
+        ["最大回撤", f"{result['max_drawdown']:.2%}"],
+        ["夏普比率", f"{result['sharpe_ratio']:.2f}"],
+        ["胜率", f"{result['win_rate']:.2%}"],
+        ["最终资产", f"¥{result['final_value']:,.2f}"],
     ]
 
     perf_table = Table(perf_data, colWidths=[6*cm, 6*cm])
@@ -525,16 +525,16 @@ def create_pdf_report(
 
     # Risk Control Parameters
     story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph("2. Risk Control Parameters", heading_style))
+    story.append(Paragraph("二、风控参数", heading_style))
 
     risk_data = [
-        ["Parameter", "Value", "Description"],
-        ["Stop Loss", "1.5%", "Single position max loss"],
-        ["Trailing Stop", "1.0%", "Protect profits after 1% gain"],
-        ["Daily Loss Limit", "1.0%", "Daily max loss threshold"],
-        ["Drawdown Limit", "2.4%", "Portfolio drawdown trigger"],
-        ["Position Size", "20%", "Single trade capital allocation"],
-        ["Cooldown Period", "3 days", "Wait after stop loss"],
+        ["参数", "数值", "说明"],
+        ["止损线", "1.5%", "单笔交易最大亏损"],
+        ["移动止损", "1.0%", "盈利1%后启动保护"],
+        ["日亏损限制", "1.0%", "单日最大亏损阈值"],
+        ["回撤限制", "2.4%", "组合回撤触发线"],
+        ["仓位比例", "20%", "单次交易资金占比"],
+        ["冷却期", "3天", "止损后等待天数"],
     ]
 
     risk_table = Table(risk_data, colWidths=[4*cm, 3*cm, 6*cm])
@@ -556,7 +556,7 @@ def create_pdf_report(
     trades = result.get('trades', [])
     if trades:
         story.append(PageBreak())
-        story.append(Paragraph("3. Trade Records", heading_style))
+        story.append(Paragraph("三、交易记录", heading_style))
 
         buy_trades = [t for t in trades if t['type'] == 'buy']
         sell_trades = [t for t in trades if t['type'] == 'sell']
@@ -565,12 +565,12 @@ def create_pdf_report(
         win_trades = [t for t in sell_trades if t.get('profit', 0) > 0]
 
         summary_data = [
-            ["Trade Summary", ""],
-            ["Total Trades", f"{len(trades)}"],
-            ["Buy Trades", f"{len(buy_trades)}"],
-            ["Sell Trades", f"{len(sell_trades)}"],
-            ["Winning Trades", f"{len(win_trades)} ({len(win_trades)/len(sell_trades)*100:.1f}%)" if sell_trades else "0"],
-            ["Realized P&L", f"${total_profit:,.2f}"],
+            ["交易汇总", ""],
+            ["总交易次数", f"{len(trades)} 次"],
+            ["买入次数", f"{len(buy_trades)} 次"],
+            ["卖出次数", f"{len(sell_trades)} 次"],
+            ["盈利次数", f"{len(win_trades)} 次 ({len(win_trades)/len(sell_trades)*100:.1f}%)" if sell_trades else "0 次"],
+            ["已实现盈亏", f"¥{total_profit:,.2f}"],
         ]
 
         summary_table = Table(summary_data, colWidths=[5*cm, 5*cm])
@@ -591,10 +591,10 @@ def create_pdf_report(
 
         # Trade Details
         story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph("Trade Details", normal_style))
+        story.append(Paragraph("交易明细", normal_style))
         story.append(Spacer(1, 0.3*cm))
 
-        trade_header = ["No.", "Date", "Action", "Price", "Shares", "Reason"]
+        trade_header = ["序号", "日期", "操作", "价格", "股数", "原因"]
         trade_rows = [trade_header]
 
         for i, trade in enumerate(trades[-20:], 1):  # Last 20 trades
@@ -602,7 +602,7 @@ def create_pdf_report(
                 str(i),
                 str(trade['date']),
                 trade['action'],
-                f"${trade['price']:.2f}",
+                f"¥{trade['price']:.2f}",
                 str(trade['shares']),
                 trade.get('reason', '')[:20],
             ])
@@ -625,25 +625,25 @@ def create_pdf_report(
     # Charts
     if chart_path and chart_path.exists():
         story.append(PageBreak())
-        story.append(Paragraph("4. Performance Charts", heading_style))
+        story.append(Paragraph("四、可视化分析", heading_style))
         img = Image(str(chart_path), width=16*cm, height=11.5*cm)
         story.append(img)
 
     # Conclusion
     story.append(PageBreak())
-    story.append(Paragraph("5. Conclusion", heading_style))
+    story.append(Paragraph("五、结论与建议", heading_style))
 
     conclusions = [
-        f"<b>Max Drawdown:</b> {result['max_drawdown']:.2%} (Target: 3.0%)",
-        f"<b>Total Return:</b> {result['total_return']:.2%}",
-        f"<b>Risk-Adjusted Return:</b> Sharpe Ratio = {result['sharpe_ratio']:.2f}",
-        "<b>Strategy Type:</b> Trend Following with Strict Risk Control",
+        f"<b>最大回撤:</b> {result['max_drawdown']:.2%} (目标: 3.0%)",
+        f"<b>总收益率:</b> {result['total_return']:.2%}",
+        f"<b>风险调整收益:</b> 夏普比率 = {result['sharpe_ratio']:.2f}",
+        "<b>策略类型:</b> 趋势跟踪 + 严格风控",
     ]
 
     if result['max_drawdown'] <= 0.03:
-        conclusions.append("<b>Result: PASS</b> - Drawdown target achieved")
+        conclusions.append("<b>结果: 达标</b> - 回撤控制在目标范围内")
     else:
-        conclusions.append("<b>Result: WARNING</b> - Drawdown exceeded target")
+        conclusions.append("<b>结果: 警告</b> - 回撤超过目标值")
 
     for conclusion in conclusions:
         story.append(Paragraph(conclusion, normal_style))
@@ -662,11 +662,11 @@ def create_pdf_report(
         alignment=1,
     )
 
-    story.append(Paragraph("<b>Disclaimer</b>", disclaimer_style))
-    story.append(Paragraph("This report is for reference only and does not constitute investment advice.", disclaimer_style))
-    story.append(Paragraph("Past performance does not guarantee future results.", disclaimer_style))
+    story.append(Paragraph("<b>免责声明</b>", disclaimer_style))
+    story.append(Paragraph("本报告仅供参考，不构成投资建议。", disclaimer_style))
+    story.append(Paragraph("过往业绩不代表未来表现，投资有风险，入市需谨慎。", disclaimer_style))
     story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph(f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", disclaimer_style))
+    story.append(Paragraph(f"报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", disclaimer_style))
 
     doc.build(story)
     logger.info(f"PDF report generated: {output_path}")
@@ -678,16 +678,16 @@ def main():
     """Main function"""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Low Drawdown Strategy Backtest with PDF Report")
-    parser.add_argument("--symbol", type=str, default="601138", help="Stock code")
-    parser.add_argument("--name", type=str, default="Foxconn Industrial", help="Stock name")
-    parser.add_argument("--start-date", type=str, default="2024-01-01", help="Start date")
-    parser.add_argument("--end-date", type=str, default="2025-02-20", help="End date")
-    parser.add_argument("--cash", type=float, default=1000000, help="Initial capital")
-    parser.add_argument("--target-drawdown", type=float, default=0.03, help="Target max drawdown")
+    parser = argparse.ArgumentParser(description="低回撤策略回测与PDF报告生成")
+    parser.add_argument("--symbol", type=str, default="601138", help="股票代码")
+    parser.add_argument("--name", type=str, default="工业富联", help="股票名称")
+    parser.add_argument("--start-date", type=str, default="2024-01-01", help="开始日期")
+    parser.add_argument("--end-date", type=str, default="2025-02-20", help="结束日期")
+    parser.add_argument("--cash", type=float, default=1000000, help="初始资金")
+    parser.add_argument("--target-drawdown", type=float, default=0.03, help="目标最大回撤")
     args = parser.parse_args()
 
-    logger.info(f"[INFO] Fetching {args.symbol} data...")
+    logger.info(f"[INFO] 获取 {args.symbol} 数据...")
 
     # Fetch data
     loader = AkshareLoader()
@@ -699,10 +699,10 @@ def main():
     )
 
     if data is None or len(data) == 0:
-        logger.error(f"[ERROR] Cannot fetch {args.symbol} data")
+        logger.error(f"[ERROR] 无法获取 {args.symbol} 数据")
         return 1
 
-    logger.info(f"[OK] Fetched {len(data)} records")
+    logger.info(f"[OK] 获取到 {len(data)} 条数据")
 
     # Create strategy
     strategy = LowDrawdownStrategy(
@@ -724,28 +724,28 @@ def main():
     )
 
     # Run backtest
-    logger.info(f"[INFO] Starting backtest, target max drawdown: {args.target_drawdown:.1%}")
+    logger.info(f"[INFO] 开始回测, 目标最大回撤: {args.target_drawdown:.1%}")
     result = runner.run(data, strategy, args.cash)
 
     # Print results
     print("\n" + "=" * 60)
-    print("Low Drawdown Backtest Result")
+    print("低回撤策略回测结果")
     print("=" * 60)
-    print(f"Stock: {args.symbol}")
-    print(f"Period: {args.start_date} -> {args.end_date}")
-    print(f"Initial Capital: ${args.cash:,.0f}")
+    print(f"股票: {args.name} ({args.symbol})")
+    print(f"区间: {args.start_date} -> {args.end_date}")
+    print(f"初始资金: {args.cash:,.0f} 元")
     print("-" * 60)
-    print(f"Total Return:     {result['total_return']:>10.2%}")
-    print(f"Max Drawdown:     {result['max_drawdown']:>10.2%}")
-    print(f"Sharpe Ratio:     {result['sharpe_ratio']:>10.2f}")
-    print(f"Win Rate:         {result['win_rate']:>10.2%}")
-    print(f"Final Value:      ${result['final_value']:>10,.2f}")
+    print(f"总收益率:     {result['total_return']:>10.2%}")
+    print(f"最大回撤:     {result['max_drawdown']:>10.2%}")
+    print(f"夏普比率:     {result['sharpe_ratio']:>10.2f}")
+    print(f"胜率:         {result['win_rate']:>10.2%}")
+    print(f"最终资产:     {result['final_value']:>10,.2f} 元")
     print("-" * 60)
 
     if result["max_drawdown"] <= args.target_drawdown:
-        print(f"[OK] Target achieved: Max drawdown {result['max_drawdown']:.2%} <= {args.target_drawdown:.1%}")
+        print(f"[OK] 达标: 最大回撤 {result['max_drawdown']:.2%} <= 目标 {args.target_drawdown:.1%}")
     else:
-        print(f"[WARN] Target not met: Max drawdown {result['max_drawdown']:.2%} > {args.target_drawdown:.1%}")
+        print(f"[WARN] 未达标: 最大回撤 {result['max_drawdown']:.2%} > 目标 {args.target_drawdown:.1%}")
 
     # Generate chart and PDF report
     output_dir = Path("reports")
@@ -756,7 +756,7 @@ def main():
 
     if REPORTLAB_AVAILABLE:
         # Generate chart
-        logger.info("[INFO] Generating performance chart...")
+        logger.info("[INFO] 生成图表...")
         generate_chart(result['portfolio_values'], chart_path)
 
         # Generate PDF report
@@ -768,7 +768,7 @@ def main():
             'initial_cash': args.cash,
         }
 
-        logger.info("[INFO] Generating PDF report...")
+        logger.info("[INFO] 生成PDF报告...")
         create_pdf_report(
             stock_code=args.symbol,
             stock_name=args.name,
@@ -778,11 +778,11 @@ def main():
             output_path=pdf_path,
         )
 
-        print(f"\n[OK] Chart saved: {chart_path}")
-        print(f"[OK] PDF report saved: {pdf_path}")
+        print(f"\n[OK] 图表已保存: {chart_path}")
+        print(f"[OK] PDF报告已保存: {pdf_path}")
     else:
-        print("\n[WARN] PDF generation skipped (reportlab not installed)")
-        print("Install with: uv pip install reportlab matplotlib")
+        print("\n[WARN] PDF生成跳过 (reportlab未安装)")
+        print("安装命令: uv pip install reportlab matplotlib")
 
     return 0
 
