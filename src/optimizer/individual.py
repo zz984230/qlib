@@ -49,14 +49,22 @@ class Individual:
                     k: abs(v) / total for k, v in self.factor_weights.items()
                 }
 
-    def to_genes(self) -> np.ndarray:
+    def to_genes(self, all_factor_names: list[str] | None = None) -> np.ndarray:
         """转换为基因数组（用于遗传操作）
+
+        Args:
+            all_factor_names: 所有因子名称列表（用于确保基因长度一致）
+                            如果为 None，使用个体自身的因子
 
         Returns:
             基因数组，格式为 [factor_weights..., signal_threshold, exit_threshold, atr_period]
         """
-        # 获取因子权重（按固定顺序）
-        factor_names = sorted(self.factor_weights.keys())
+        # 使用所有因子名称确保基因长度一致
+        if all_factor_names is None:
+            factor_names = sorted(self.factor_weights.keys())
+        else:
+            factor_names = all_factor_names
+
         weight_genes = [self.factor_weights.get(name, 0.0) for name in factor_names]
 
         # 组合所有基因

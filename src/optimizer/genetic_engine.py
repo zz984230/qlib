@@ -228,37 +228,39 @@ class GeneticEngine:
         Returns:
             两个子代个体
         """
-        genes1 = parent1.to_genes()
-        genes2 = parent2.to_genes()
+        # 使用固定的因子顺序确保基因长度一致
+        genes1 = parent1.to_genes(self.factor_names)
+        genes2 = parent2.to_genes(self.factor_names)
+
+        # 基因长度现在应该一致
+        if len(genes1) <= 1:
+            return parent1, parent2
 
         # 随机选择交叉点
-        if len(genes1) > 1:
-            crossover_point = self.random.integers(1, len(genes1))
+        crossover_point = self.random.integers(1, len(genes1))
 
-            # 交叉基因
-            child1_genes = genes1.copy()
-            child2_genes = genes2.copy()
+        # 交叉基因
+        child1_genes = genes1.copy()
+        child2_genes = genes2.copy()
 
-            child1_genes[crossover_point:] = genes2[crossover_point:]
-            child2_genes[crossover_point:] = genes1[crossover_point:]
+        child1_genes[crossover_point:] = genes2[crossover_point:]
+        child2_genes[crossover_point:] = genes1[crossover_point:]
 
-            # 从基因创建个体
-            child1 = Individual.from_genes(
-                child1_genes,
-                self.factor_names,
-                generation=generation,
-                parent_ids=[id(parent1), id(parent2)]
-            )
-            child2 = Individual.from_genes(
-                child2_genes,
-                self.factor_names,
-                generation=generation,
-                parent_ids=[id(parent1), id(parent2)]
-            )
+        # 从基因创建个体
+        child1 = Individual.from_genes(
+            child1_genes,
+            self.factor_names,
+            generation=generation,
+            parent_ids=[id(parent1), id(parent2)]
+        )
+        child2 = Individual.from_genes(
+            child2_genes,
+            self.factor_names,
+            generation=generation,
+            parent_ids=[id(parent1), id(parent2)]
+        )
 
-            return child1, child2
-
-        return parent1, parent2
+        return child1, child2
 
     def _mutate(
         self,
@@ -276,7 +278,8 @@ class GeneticEngine:
         Returns:
             变异后的个体
         """
-        genes = individual.to_genes()
+        genes = individual.to_genes(self.factor_names)
+        n_factors = len(self.factor_names)
 
         # 对每个基因添加高斯噪声
         for i in range(len(genes)):
@@ -284,32 +287,32 @@ class GeneticEngine:
                 noise = self.random.normal(0, self.config.mutation_strength)
                 genes[i] += noise
 
-        # 约束基因范围
-        n_factors = len(self.factor_names)
-
         # 因子权重保持非负（变异后会在 Individual.__post_init__ 中归一化）
         genes[:n_factors] = np.maximum(genes[:n_factors], 0)
 
         # 信号阈值约束
-        genes[n_factors] = np.clip(
-            genes[n_factors],
-            self.config.min_signal_threshold,
-            self.config.max_signal_threshold
-        )
+        if n_factors < len(genes):
+            genes[n_factors] = np.clip(
+                genes[n_factors],
+                self.config.min_signal_threshold,
+                self.config.max_signal_threshold
+            )
 
         # 出场阈值约束
-        genes[n_factors + 1] = np.clip(
-            genes[n_factors + 1],
-            self.config.min_exit_threshold,
-            self.config.max_exit_threshold
-        )
+        if n_factors + 1 < len(genes):
+            genes[n_factors + 1] = np.clip(
+                genes[n_factors + 1],
+                self.config.min_exit_threshold,
+                self.config.max_exit_threshold
+            )
 
         # ATR 周期约束
-        genes[n_factors + 2] = np.clip(
-            genes[n_factors + 2],
-            self.config.min_atr_period,
-            self.config.max_atr_period
-        )
+        if n_factors + 2 < len(genes):
+            genes[n_factors + 2] = np.clip(
+                genes[n_factors + 2],
+                self.config.min_atr_period,
+                self.config.max_atr_period
+            )
 
         # 从基因创建新个体
         mutated = Individual.from_genes(
