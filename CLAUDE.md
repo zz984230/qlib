@@ -12,8 +12,8 @@ AI-driven quantitative investment strategy system for A-share market (China stoc
 # Install dependencies
 uv sync
 
-# Install PDF report dependencies (optional)
-uv pip install reportlab matplotlib
+# Install HTML report dependencies (optional)
+uv pip install jinja2 plotly kaleido
 
 # Run tests
 uv run pytest tests/ -v
@@ -36,7 +36,7 @@ uv run black src/
 
 ### Data Flow
 ```
-akshare → AkshareLoader → QlibConverter → qlib format → BacktestRunner → Analysis → PDF Report
+akshare → AkshareLoader → QlibConverter → qlib format → BacktestRunner → Analysis → HTML Report
                                                                ↓
                                     AI Agent ← analyze results ←─┘
 ```
@@ -59,7 +59,21 @@ akshare → AkshareLoader → QlibConverter → qlib format → BacktestRunner �
 **src/analysis/**: Analysis & Reporting
 - `PerformanceMetrics`: Dataclass with 30+ metrics (returns, risk, risk-adjusted)
 - `BacktestVisualizer`: Generates nav curves, drawdown plots, monthly heatmaps
-- `ReportGenerator`: Creates PDF reports with charts embedded
+- `HtmlReportGenerator`: Creates HTML reports with interactive charts (using Jinja2 + Chart.js/Plotly)
+
+**src/optimizer/**: Strategy Optimization (NEW)
+- `GeneticEngine`: Genetic algorithm for factor combination optimization
+- `StrategyPool`: Manages valid strategies (JSON file storage in `strategies/pool/`)
+- `FitnessEvaluator`: Evaluates strategy fitness with multi-period backtesting
+
+**src/report/**: HTML Report Generation (NEW)
+- `html_generator.py`: Generates comprehensive HTML reports with:
+  - Evolution history charts
+  - Factor weight analysis
+  - Three-period performance comparison (1y/3m/1m)
+  - Trade details (delivery notes)
+  - Exploration logs
+  - AI analysis recommendations
 
 **src/agent/**: AI automation
 - `analyze_backtest_result()`: Diagnoses strategy issues, returns severity-ranked recommendations
@@ -106,6 +120,68 @@ For strict risk control (target max drawdown <= 3%), use `low_drawdown_report.py
 3. Optionally implement `to_qlib_expression()` for qlib native execution
 4. Register in `FACTOR_REGISTRY` in `factors/__init__.py`
 
+## Turtle Genetic Optimizer (NEW)
+
+For automated strategy optimization using genetic algorithm combined with Turtle Trading rules:
+
+**Overview:**
+- Uses genetic algorithm to explore factor combinations for entry/exit signals
+- Implements Turtle Trading rules for position sizing, pyramiding, and risk management
+- Target: Maximize returns under 3% maximum drawdown constraint
+- Interactive: Pauses on each valid strategy discovery for user confirmation
+
+**Core Components:**
+
+1. **TurtleSignalGenerator**: Factor-based signal generation
+   - Explores combinations of: MA, RSI, Momentum, Volatility, Volume, etc.
+   - Genetic algorithm evolves optimal factor weights
+
+2. **TurtlePositionManager**: ATR-based dynamic position sizing
+   - Unit size = 1% of account / ATR
+   - Pyramid adding: Up to 4 units at 0.5 ATR intervals
+
+3. **TurtleRiskManager**: Dual stop-loss system
+   - Fixed stop: Entry price - 2*ATR
+   - Trailing stop: Activates after 1N profit
+
+4. **GeneticEngine**: Evolutionary optimization
+   - Population: 50 individuals per generation
+   - Selection: Tournament + Elite preservation
+   - Crossover: Single-point
+   - Mutation: Gaussian
+
+5. **FitnessEvaluator**: Multi-period fitness calculation
+   - Backtests on 3 periods: 1y (60% weight), 3m (30%), 1m (10%)
+   - Penalty for drawdown > 3%
+   - Bonus for Sharpe ratio and stability
+
+**Valid Strategy Criteria:**
+- Maximum drawdown <= 3% across all three periods
+- Positive returns in at least 2 of 3 periods
+
+**Usage:**
+```bash
+# Run turtle genetic optimizer
+uv run python scripts/turtle_genetic_optimizer.py \
+    --symbol 601138 \
+    --name "工业富联" \
+    --cash 50000 \
+    --max-generations 100 \
+    --population-size 50
+```
+
+**Strategy Pool:**
+Valid strategies are saved to `strategies/pool/` as JSON files with complete parameters and backtest results.
+
+**HTML Report:**
+Comprehensive report includes:
+- Evolution history charts
+- Factor weight heatmap
+- Three-period performance comparison
+- Trade details (delivery notes)
+- Exploration logs
+- AI analysis recommendations
+
 ## Scripts
 
 ```bash
@@ -118,9 +194,12 @@ uv run python scripts/run_backtest.py --strategy dual_ma --start-date 2023-01-01
 # Run analysis pipeline (backtest + report)
 uv run python scripts/run_analysis.py --strategy rsi --start-date 2023-01-01
 
-# Low drawdown strategy backtest with PDF report (recommended for risk control)
-# Generates a combined PDF report with 3 time periods (1y/3m/1m)
+# Low drawdown strategy backtest with HTML report (recommended for risk control)
+# Generates a combined HTML report with 3 time periods (1y/3m/1m)
 uv run python scripts/low_drawdown_report.py --symbol 601138 --name "工业富联"
+
+# Turtle genetic optimizer (NEW - automated strategy exploration)
+uv run python scripts/turtle_genetic_optimizer.py --symbol 601138 --name "工业富联"
 
 # Interactive strategy optimization
 uv run python scripts/optimize_strategy.py --strategy dual_ma
@@ -137,7 +216,8 @@ uv run python scripts/run_agent.py --mode search    # Search new strategies
 | `update_data.py` | Fetch stock data from akshare, save as parquet cache |
 | `run_backtest.py` | Standard strategy backtest with qlib/vectorized engine |
 | `run_analysis.py` | Complete analysis pipeline: backtest + performance report |
-| `low_drawdown_report.py` | Low drawdown strategy (target 3%) + PDF report generation |
+| `low_drawdown_report.py` | Low drawdown strategy (target 3%) + HTML report generation |
+| `turtle_genetic_optimizer.py` | Genetic algorithm optimizer with Turtle Trading rules (NEW) |
 | `optimize_strategy.py` | Interactive parameter optimization |
 | `run_agent.py` | AI-powered automation for strategy analysis |
 
@@ -155,21 +235,27 @@ uv run python scripts/run_agent.py --mode search    # Search new strategies
 **IMPORTANT: All generated reports must be in Chinese (Simplified).**
 
 This applies to:
-- PDF reports generated by `low_drawdown_report.py`
+- HTML reports generated by `low_drawdown_report.py` and `turtle_genetic_optimizer.py`
 - Chart labels and titles
 - Table headers and content
 - Conclusions and recommendations
 
 ### Report Format
 
-**IMPORTANT: All backtest reports must be generated as a single combined PDF containing 3 time periods.**
+**IMPORTANT: All backtest reports must be generated as a single combined HTML file containing 3 time periods.**
 
 The report must include:
 - Period 1: Near 1 year (1y)
 - Period 2: Near 3 months (3m)
 - Period 3: Near 1 month (1m)
 
-Each period should have its own performance metrics, charts, and trade summary, but all consolidated into one PDF file.
+Each period should have its own performance metrics, charts, and trade summary, all consolidated into one HTML file with interactive charts.
+
+**HTML Report Technology:**
+- Jinja2 templating engine
+- Chart.js or Plotly for interactive charts
+- Tailwind CSS for styling
+- Single self-contained HTML file (no external dependencies required)
 
 ### No Emoji Policy
 
