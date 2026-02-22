@@ -15,6 +15,13 @@ from src.strategy.advanced import (
 from src.strategy.regime import RegimeDetector, MarketRegime, MarketState, get_recommended_strategy
 from src.strategy.adaptive import AdaptiveStrategy, DynamicAllocationStrategy
 from src.strategy.factor_driven import FactorDrivenStrategy
+from src.strategy.turtle_position import (
+    TurtlePositionManager,
+    TurtleRiskManager,
+    Position,
+    PortfolioState,
+)
+from src.strategy.turtle_signals import TurtleSignalGenerator
 
 __all__ = [
     # 基础策略
@@ -42,4 +49,10 @@ __all__ = [
     # 工具函数
     "get_strategy",
     "list_strategies",
+    # 海龟交易法则模块
+    "TurtlePositionManager",
+    "TurtleRiskManager",
+    "Position",
+    "PortfolioState",
+    "TurtleSignalGenerator",
 ]

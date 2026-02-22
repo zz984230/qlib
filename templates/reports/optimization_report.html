@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ symbol }} - 海龟遗传算法优化报告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+        .metric-card { transition: transform 0.2s; }
+        .metric-card:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <!-- 标题 -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">{{ symbol }} - 海龟遗传算法优化报告</h1>
+            <p class="text-gray-600 mt-2">生成时间: {{ generation_time }}</p>
+        </header>
+
+        <!-- 概览卡片 -->
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm">当前代数</h3>
+                <p class="text-3xl font-bold text-gray-800">{{ generation }}</p>
+            </div>
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm">有效策略数</h3>
+                <p class="text-3xl font-bold text-green-600">{{ valid_count }}</p>
+            </div>
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm">最优适应度</h3>
+                <p class="text-3xl font-bold text-blue-600">{{ "%.4f"|format(best_fitness) }}</p>
+            </div>
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm">平均适应度</h3>
+                <p class="text-3xl font-bold text-gray-800">{{ "%.4f"|format(avg_fitness) }}</p>
+            </div>
+        </section>
+
+        <!-- 最优策略详情 -->
+        {% if best_individual %}
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">最优策略详情</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 因子权重 -->
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">因子权重</h3>
+                    <div class="space-y-2">
+                        {% for factor, weight in best_individual.factor_weights.items() %}
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">{{ factor }}</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (weight * 100)|int }}%"></div>
+                                </div>
+                                <span class="text-sm font-mono">{{ "%.2f"|format(weight) }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- 策略参数 -->
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">策略参数</h3>
+                    <table class="min-w-full">
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600">入场阈值</td>
+                            <td class="py-2 font-mono">{{ "%.2f"|format(best_individual.signal_threshold) }}</td>
+                        </tr>
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600">出场阈值</td>
+                            <td class="py-2 font-mono">{{ "%.2f"|format(best_individual.exit_threshold) }}</td>
+                        </tr>
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600">ATR 周期</td>
+                            <td class="py-2 font-mono">{{ best_individual.atr_period }}</td>
+                        </tr>
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600">止损倍数</td>
+                            <td class="py-2 font-mono">{{ "%.1f"|format(best_individual.stop_loss_atr) }}N</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 text-gray-600">适应度</td>
+                            <td class="py-2 font-mono font-bold text-blue-600">{{ "%.4f"|format(best_individual.fitness) }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 回测结果 -->
+            {% if best_individual.backtest_results %}
+            <div class="mt-6">
+                <h3 class="font-semibold text-gray-700 mb-2">回测结果</h3>
+                <table class="min-w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-4 py-2 text-left">周期</th>
+                            <th class="border px-4 py-2 text-right">收益率</th>
+                            <th class="border px-4 py-2 text-right">最大回撤</th>
+                            <th class="border px-4 py-2 text-right">夏普比率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for period, result in best_individual.backtest_results.items() %}
+                        <tr>
+                            <td class="border px-4 py-2">{{ period }}</td>
+                            <td class="border px-4 py-2 text-right {{ 'text-green-600' if result.total_return > 0 else 'text-red-600' }}">
+                                {{ "%.2f%%"|format(result.total_return * 100) }}
+                            </td>
+                            <td class="border px-4 py-2 text-right {{ 'text-green-600' if result.max_drawdown <= 0.03 else 'text-red-600' }}">
+                                {{ "%.2f%%"|format(result.max_drawdown * 100) }}
+                            </td>
+                            <td class="border px-4 py-2 text-right">{{ "%.2f"|format(result.sharpe_ratio) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        <!-- 演化历史图表 -->
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">遗传算法演化历史</h2>
+            <div class="h-80">
+                <canvas id="evolutionChart"></canvas>
+            </div>
+        </section>
+
+        <!-- 因子权重分析 -->
+        {% if factor_analysis %}
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">因子权重分析</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {% for factor, stats in factor_analysis.items() %}
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2">{{ factor }}</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600">均值:</span>
+                            <span class="font-mono">{{ "%.4f"|format(stats.mean) }}</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600">标准差:</span>
+                            <span class="font-mono">{{ "%.4f"|format(stats.std) }}</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600">使用率:</span>
+                            <span class="font-mono">{{ "%.1f%%"|format(stats.usage_rate * 100) }}</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: {{ (stats.usage_rate * 100)|int }}%"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 有效策略列表 -->
+        {% if valid_strategies %}
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">有效策略列表 (Top {{ valid_strategies|length }})</h2>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-4 py-2 text-left">排名</th>
+                            <th class="border px-4 py-2 text-left">主要因子</th>
+                            <th class="border px-4 py-2 text-right">入场阈值</th>
+                            <th class="border px-4 py-2 text-right">出场阈值</th>
+                            <th class="border px-4 py-2 text-right">适应度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for strategy in valid_strategies %}
+                        <tr>
+                            <td class="border px-4 py-2">{{ loop.index }}</td>
+                            <td class="border px-4 py-2">
+                                {% for factor, weight in strategy.factors.items()[:3] %}
+                                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs mr-1">
+                                    {{ factor }}: {{ "%.2f"|format(weight) }}
+                                </span>
+                                {% endfor %}
+                            </td>
+                            <td class="border px-4 py-2 text-right font-mono">{{ "%.2f"|format(strategy.signal_threshold) }}</td>
+                            <td class="border px-4 py-2 text-right font-mono">{{ "%.2f"|format(strategy.exit_threshold) }}</td>
+                            <td class="border px-4 py-2 text-right font-bold text-blue-600">{{ "%.4f"|format(strategy.fitness) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 页脚 -->
+        <footer class="text-center text-gray-500 text-sm mt-8">
+            <p>本报告由海龟遗传算法优化系统生成</p>
+            <p>系统基于微软 Qlib 量化框架</p>
+        </footer>
+    </div>
+
+    <!-- 图表脚本 -->
+    <script>
+        // 演化历史图表
+        const ctx = document.getElementById('evolutionChart').getContext('2d');
+
+        const generations = {{ generations|tojson }};
+        const bestFitness = {{ best_fitness_history|tojson }};
+        const avgFitness = {{ avg_fitness_history|tojson }};
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: generations,
+                datasets: [
+                    {
+                        label: '最优适应度',
+                        data: bestFitness,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: '平均适应度',
+                        data: avgFitness,
+                        borderColor: 'rgb(156, 163, 175)',
+                        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: '适应度'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: '代数'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
