@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>601138 - 海龟遗传算法优化报告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+        .metric-card { transition: transform 0.2s; }
+        .metric-card:hover { transform: translateY(-2px); }
+
+        /* Tooltip 样式 */
+        .has-tooltip {
+            position: relative;
+            cursor: help;
+            border-bottom: 1px dotted #888;
+        }
+        .has-tooltip:hover::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1f2937;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 100;
+            max-width: 300px;
+            white-space: pre-wrap;
+            text-align: left;
+        }
+        .has-tooltip:hover::before {
+            content: '';
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(8px);
+            border: 6px solid transparent;
+            border-top-color: #1f2937;
+            z-index: 100;
+        }
+
+        /* 表格中的 tooltip */
+        td.has-tooltip:hover::after,
+        th.has-tooltip:hover::after {
+            bottom: auto;
+            top: 100%;
+            margin-top: 4px;
+        }
+        td.has-tooltip:hover::before,
+        th.has-tooltip:hover::before {
+            bottom: auto;
+            top: 100%;
+            border-top-color: transparent;
+            border-bottom-color: #1f2937;
+            transform: translateX(-50%) translateY(-12px);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-8">
+        <!-- 标题 -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">601138 - 海龟遗传算法优化报告</h1>
+            <p class="text-gray-600 mt-2">生成时间: 2026-02-23 00:07:18</p>
+        </header>
+
+        <!-- 概览卡片 -->
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm has-tooltip" data-tip="遗传算法运行的代数&#10;每代包含一次选择、交叉、变异操作">当前代数</h3>
+                <p class="text-3xl font-bold text-gray-800">10</p>
+            </div>
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm has-tooltip" data-tip="发现的满足有效策略条件的数量&#10;条件：回撤<=3% 且至少2个周期有正收益">有效策略数</h3>
+                <p class="text-3xl font-bold text-green-600">1</p>
+            </div>
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm has-tooltip" data-tip="种群中最优个体的适应度得分&#10;综合收益、回撤、夏普比率计算">最优适应度</h3>
+                <p class="text-3xl font-bold text-blue-600">0.6726</p>
+            </div>
+            <div class="metric-card bg-white p-6 rounded-lg shadow">
+                <h3 class="text-gray-500 text-sm has-tooltip" data-tip="种群所有个体的平均适应度&#10;反映整体种群质量">平均适应度</h3>
+                <p class="text-3xl font-bold text-gray-800">0.1681</p>
+            </div>
+        </section>
+
+        <!-- 最优策略详情 -->
+        
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">最优策略详情</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- 因子权重 -->
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2 has-tooltip" data-tip="各因子对信号的贡献权重&#10;所有权重之和为1&#10;值范围: 0.0 ~ 1.0">因子权重</h3>
+                    <div class="space-y-2">
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="ma_ratio: 均线偏离度, MA5/MA20-1, 正值表示短期均线上方&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">ma_ratio</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="ma_cross: 金叉死叉信号, MA5&gt;MA20时为1, 否则为0&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">ma_cross</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="momentum: 5日价格动量, (当前价-5日前价格)/5日前价格&#10;当前权重: 0.05207614615766262&#10;值范围: 0.0 ~ 1.0">momentum</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 5%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.05</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="price_momentum: 20日价格动量, (当前价-20日前价格)/20日前价格&#10;当前权重: 0.2590516122295668&#10;值范围: 0.0 ~ 1.0">price_momentum</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 25%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.26</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="rsi: RSI相对强弱指标/100, &gt;0.7超买, &lt;0.3超卖&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">rsi</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="macd: MACD/Signal比值, 正值表示多头趋势&#10;当前权重: 0.14610466374262632&#10;值范围: 0.0 ~ 1.0">macd</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 14%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.15</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="kdj: (K-D)/100, K线上穿D线为金叉&#10;当前权重: 0.23247734695932842&#10;值范围: 0.0 ~ 1.0">kdj</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 23%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.23</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="volatility: 20日价格波动率, 标准差/收盘价&#10;当前权重: 0.1693368730476558&#10;值范围: 0.0 ~ 1.0">volatility</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 16%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.17</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="atr_ratio: ATR/收盘价, 真实波幅占比&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">atr_ratio</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="volume_ratio: 量比, 当前成交量/20日平均成交量&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">volume_ratio</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="volume_price: 量价配合度, 成交量变化*价格变化&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">volume_price</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="adx: ADX趋势强度/100, &gt;0.25表示有趋势&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">adx</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="cci: CCI商品通道指标/200, &gt;1超买, &lt;-1超卖&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">cci</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="obv: OBV能量潮/MA(OBV,20)-1, 资金流向指标&#10;当前权重: 0.0&#10;值范围: 0.0 ~ 1.0">obv</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600 has-tooltip" data-tip="money_flow: 资金流向强度, 典型价格变化*成交量强度&#10;当前权重: 0.14095335786316&#10;值范围: 0.0 ~ 1.0">money_flow</span>
+                            <div class="flex items-center">
+                                <div class="w-32 bg-gray-200 rounded-full h-2 mr-2">
+                                    <div class="bg-blue-500 h-2 rounded-full" style="width: 14%"></div>
+                                </div>
+                                <span class="text-sm font-mono">0.14</span>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+
+                <!-- 策略参数 -->
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2 has-tooltip" data-tip="策略的核心控制参数&#10;影响入场、出场和仓位管理">策略参数</h3>
+                    <table class="min-w-full">
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600 has-tooltip" data-tip="入场信号阈值&#10;信号强度>=此值时触发买入&#10;值范围: 0.0 ~ 1.0&#10;推荐: 0.5 ~ 0.7">入场阈值</td>
+                            <td class="py-2 font-mono">0.29</td>
+                        </tr>
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600 has-tooltip" data-tip="出场信号阈值&#10;信号强度>=此值时触发卖出&#10;值范围: 0.0 ~ 1.0&#10;推荐: 0.3 ~ 0.5">出场阈值</td>
+                            <td class="py-2 font-mono">0.34</td>
+                        </tr>
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600 has-tooltip" data-tip="ATR计算周期&#10;用于计算动态仓位和止损&#10;值范围: 5 ~ 50&#10;海龟原版: 20">ATR 周期</td>
+                            <td class="py-2 font-mono">41</td>
+                        </tr>
+                        <tr class="border-b">
+                            <td class="py-2 text-gray-600 has-tooltip" data-tip="止损距离(ATR倍数)&#10;止损价 = 入场价 - N * ATR&#10;值范围: 1.0 ~ 4.0&#10;海龟原版: 2N">止损倍数</td>
+                            <td class="py-2 font-mono">2.0N</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2 text-gray-600 has-tooltip" data-tip="策略综合评分&#10;由加权收益、回撤惩罚、夏普加分组成&#10;越高越好">适应度</td>
+                            <td class="py-2 font-mono font-bold text-blue-600">0.6726</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 回测结果 -->
+            
+            <div class="mt-6">
+                <h3 class="font-semibold text-gray-700 mb-2 has-tooltip" data-tip="各时间周期的回测绩效&#10;1y: 近1年(权重60%)&#10;3m: 近3月(权重30%)&#10;1m: 近1月(权重10%)">回测结果</h3>
+                <table class="min-w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-4 py-2 text-left has-tooltip" data-tip="回测时间周期&#10;1y=近1年, 3m=近3月, 1m=近1月">周期</th>
+                            <th class="border px-4 py-2 text-right has-tooltip" data-tip="总收益率&#10;=(期末净值/期初净值)-1&#10;正值表示盈利">收益率</th>
+                            <th class="border px-4 py-2 text-right has-tooltip" data-tip="最大回撤&#10;从最高点到最低点的最大跌幅&#10;有效策略要求<=3%">最大回撤</th>
+                            <th class="border px-4 py-2 text-right has-tooltip" data-tip="夏普比率&#10;=(年化收益-无风险利率)/年化波动&#10;>1为良好, >2为优秀">夏普比率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+                        <tr>
+                            <td class="border px-4 py-2">1y</td>
+                            <td class="border px-4 py-2 text-right text-green-600">
+                                0.28%
+                            </td>
+                            <td class="border px-4 py-2 text-right text-green-600">
+                                0.03%
+                            </td>
+                            <td class="border px-4 py-2 text-right">6.78</td>
+                        </tr>
+                        
+                        <tr>
+                            <td class="border px-4 py-2">3m</td>
+                            <td class="border px-4 py-2 text-right text-red-600">
+                                0.00%
+                            </td>
+                            <td class="border px-4 py-2 text-right text-green-600">
+                                0.00%
+                            </td>
+                            <td class="border px-4 py-2 text-right">0.00</td>
+                        </tr>
+                        
+                    </tbody>
+                </table>
+            </div>
+            
+        </section>
+        
+
+        <!-- 演化历史图表 -->
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4 has-tooltip" data-tip="遗传算法各代的适应度变化&#10;展示算法收敛过程&#10;最优适应度应逐渐上升">遗传算法演化历史</h2>
+            <div class="h-80">
+                <canvas id="evolutionChart"></canvas>
+            </div>
+        </section>
+
+        <!-- 因子权重分析 -->
+        
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4 has-tooltip" data-tip="各因子在种群中的统计分布&#10;使用率高的因子对策略更重要">因子权重分析</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="volume_price: 量价配合度, 成交量变化*价格变化">volume_price</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="volume_ratio: 量比, 当前成交量/20日平均成交量">volume_ratio</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0019</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0084</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="cci: CCI商品通道指标/200, &gt;1超买, &lt;-1超卖">cci</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0075</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0238</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="volatility: 20日价格波动率, 标准差/收盘价">volatility</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.1800</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0537</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="rsi: RSI相对强弱指标/100, &gt;0.7超买, &lt;0.3超卖">rsi</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0012</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0052</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="momentum: 5日价格动量, (当前价-5日前价格)/5日前价格">momentum</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0502</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0059</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="adx: ADX趋势强度/100, &gt;0.25表示有趋势">adx</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="obv: OBV能量潮/MA(OBV,20)-1, 资金流向指标">obv</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="price_momentum: 20日价格动量, (当前价-20日前价格)/20日前价格">price_momentum</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.2532</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0184</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="atr_ratio: ATR/收盘价, 真实波幅占比">atr_ratio</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="ma_ratio: 均线偏离度, MA5/MA20-1, 正值表示短期均线上方">ma_ratio</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0000</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="kdj: (K-D)/100, K线上穿D线为金叉">kdj</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.2238</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0271</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="macd: MACD/Signal比值, 正值表示多头趋势">macd</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.1315</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0438</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="ma_cross: 金叉死叉信号, MA5&gt;MA20时为1, 否则为0">ma_cross</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.0010</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0042</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded">
+                    <h3 class="font-semibold text-gray-800 mb-2 has-tooltip" data-tip="money_flow: 资金流向强度, 典型价格变化*成交量强度">money_flow</h3>
+                    <div class="space-y-1 text-sm">
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子在种群中的平均权重">均值:</span>
+                            <span class="font-mono">0.1497</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="权重的波动程度&#10;越小表示种群越一致">标准差:</span>
+                            <span class="font-mono">0.0510</span>
+                        </p>
+                        <p class="flex justify-between">
+                            <span class="text-gray-600 has-tooltip" data-tip="该因子被使用的比例&#10;100%表示所有个体都使用该因子">使用率:</span>
+                            <span class="font-mono">100.0%</span>
+                        </p>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                
+            </div>
+        </section>
+        
+
+        <!-- 有效策略列表 -->
+        
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4 has-tooltip" data-tip="满足有效策略条件的策略列表&#10;有效条件: 回撤<=3% 且 至少2个周期有正收益">有效策略列表 (Top 1)</h2>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-4 py-2 text-left">排名</th>
+                            <th class="border px-4 py-2 text-left has-tooltip" data-tip="策略使用的主要因子及其权重">主要因子</th>
+                            <th class="border px-4 py-2 text-right has-tooltip" data-tip="入场信号阈值&#10;信号强度>=此值时触发买入&#10;值范围: 0.0 ~ 1.0">入场阈值</th>
+                            <th class="border px-4 py-2 text-right has-tooltip" data-tip="出场信号阈值&#10;信号强度>=此值时触发卖出&#10;值范围: 0.0 ~ 1.0">出场阈值</th>
+                            <th class="border px-4 py-2 text-right has-tooltip" data-tip="策略综合评分&#10;由加权收益、回撤惩罚、夏普加分组成">适应度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+                        <tr>
+                            <td class="border px-4 py-2">1</td>
+                            <td class="border px-4 py-2">
+                                
+                                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs mr-1 has-tooltip" data-tip="ma_ratio: 均线偏离度, MA5/MA20-1, 正值表示短期均线上方&#10;权重: 0.0">
+                                    ma_ratio: 0.00
+                                </span>
+                                
+                                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs mr-1 has-tooltip" data-tip="ma_cross: 金叉死叉信号, MA5&gt;MA20时为1, 否则为0&#10;权重: 0.0">
+                                    ma_cross: 0.00
+                                </span>
+                                
+                                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs mr-1 has-tooltip" data-tip="momentum: 5日价格动量, (当前价-5日前价格)/5日前价格&#10;权重: 0.030347569937441445">
+                                    momentum: 0.03
+                                </span>
+                                
+                            </td>
+                            <td class="border px-4 py-2 text-right font-mono">0.36</td>
+                            <td class="border px-4 py-2 text-right font-mono">0.34</td>
+                            <td class="border px-4 py-2 text-right font-bold text-blue-600">0.2346</td>
+                        </tr>
+                        
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        
+
+        <!-- 因子说明表 -->
+        <section class="bg-white p-6 rounded-lg shadow mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">因子说明</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-4 py-2 text-left">因子名称</th>
+                            <th class="border px-4 py-2 text-left">类型</th>
+                            <th class="border px-4 py-2 text-left">说明</th>
+                            <th class="border px-4 py-2 text-left">值范围</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">ma_ratio</td><td class="px-4 py-2">动量</td><td class="px-4 py-2">MA5/MA20-1, 均线偏离度</td><td class="px-4 py-2">-0.2 ~ 0.2</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">ma_cross</td><td class="px-4 py-2">动量</td><td class="px-4 py-2">MA5>MA20, 金叉死叉信号</td><td class="px-4 py-2">0 或 1</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">momentum</td><td class="px-4 py-2">动量</td><td class="px-4 py-2">5日价格动量</td><td class="px-4 py-2">-0.5 ~ 0.5</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">price_momentum</td><td class="px-4 py-2">动量</td><td class="px-4 py-2">20日价格动量</td><td class="px-4 py-2">-0.5 ~ 0.5</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">rsi</td><td class="px-4 py-2">技术指标</td><td class="px-4 py-2">RSI相对强弱指标/100</td><td class="px-4 py-2">0 ~ 1</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">macd</td><td class="px-4 py-2">技术指标</td><td class="px-4 py-2">MACD/Signal, MACD比值</td><td class="px-4 py-2">-2 ~ 2</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">kdj</td><td class="px-4 py-2">技术指标</td><td class="px-4 py-2">(K-D)/100, KDJ差值</td><td class="px-4 py-2">-1 ~ 1</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">volatility</td><td class="px-4 py-2">波动率</td><td class="px-4 py-2">20日标准差/收盘价</td><td class="px-4 py-2">0 ~ 0.5</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">atr_ratio</td><td class="px-4 py-2">波动率</td><td class="px-4 py-2">ATR/收盘价</td><td class="px-4 py-2">0 ~ 0.1</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">volume_ratio</td><td class="px-4 py-2">成交量</td><td class="px-4 py-2">成交量/MA(成交量,20)</td><td class="px-4 py-2">0 ~ 5</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">volume_price</td><td class="px-4 py-2">成交量</td><td class="px-4 py-2">量价配合度</td><td class="px-4 py-2">-1 ~ 1</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">adx</td><td class="px-4 py-2">趋势</td><td class="px-4 py-2">ADX趋势强度/100</td><td class="px-4 py-2">0 ~ 1</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">cci</td><td class="px-4 py-2">趋势</td><td class="px-4 py-2">CCI商品通道指标/200</td><td class="px-4 py-2">-2 ~ 2</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">obv</td><td class="px-4 py-2">能量</td><td class="px-4 py-2">OBV能量潮/MA(OBV,20)-1</td><td class="px-4 py-2">-0.5 ~ 0.5</td></tr>
+                        <tr class="border-b"><td class="px-4 py-2 font-mono">money_flow</td><td class="px-4 py-2">资金流</td><td class="px-4 py-2">典型价格与成交量关联</td><td class="px-4 py-2">-1 ~ 1</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 页脚 -->
+        <footer class="text-center text-gray-500 text-sm mt-8">
+            <p>本报告由海龟遗传算法优化系统生成</p>
+            <p>系统基于微软 Qlib 量化框架</p>
+        </footer>
+    </div>
+
+    <!-- 图表脚本 -->
+    <script>
+        // 演化历史图表
+        const ctx = document.getElementById('evolutionChart').getContext('2d');
+
+        const generations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const bestFitness = [0.12900504432579857, 0.12900504432579857, 0.6725564531113953, 0.6725564531113953, 0.6725564531113953, 0.6725564531113953, 0.6725564531113953, 0.6725564531113953, 0.6725564531113953, 0.6725564531113953];
+        const avgFitness = [-0.27382852119952056, 0.012693642012815481, 0.07286170401252795, 0.17135621924648814, 0.1790864945650778, 0.3177599893721426, 0.4826172472662459, 0.6725564531113956, 0.6170322764590523, 0.5983515119629497];
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: generations,
+                datasets: [
+                    {
+                        label: '最优适应度',
+                        data: bestFitness,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: '平均适应度',
+                        data: avgFitness,
+                        borderColor: 'rgb(156, 163, 175)',
+                        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: '适应度'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: '代数'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

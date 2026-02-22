@@ -21,6 +21,25 @@ from src.optimizer.individual import Individual
 
 logger = logging.getLogger(__name__)
 
+# 因子描述字典（用于报告中的 tooltip）
+FACTOR_DESCRIPTIONS = {
+    "ma_ratio": "均线偏离度, MA5/MA20-1, 正值表示短期均线上方",
+    "ma_cross": "金叉死叉信号, MA5>MA20时为1, 否则为0",
+    "momentum": "5日价格动量, (当前价-5日前价格)/5日前价格",
+    "price_momentum": "20日价格动量, (当前价-20日前价格)/20日前价格",
+    "rsi": "RSI相对强弱指标/100, >0.7超买, <0.3超卖",
+    "macd": "MACD/Signal比值, 正值表示多头趋势",
+    "kdj": "(K-D)/100, K线上穿D线为金叉",
+    "volatility": "20日价格波动率, 标准差/收盘价",
+    "atr_ratio": "ATR/收盘价, 真实波幅占比",
+    "volume_ratio": "量比, 当前成交量/20日平均成交量",
+    "volume_price": "量价配合度, 成交量变化*价格变化",
+    "adx": "ADX趋势强度/100, >0.25表示有趋势",
+    "cci": "CCI商品通道指标/200, >1超买, <-1超卖",
+    "obv": "OBV能量潮/MA(OBV,20)-1, 资金流向指标",
+    "money_flow": "资金流向强度, 典型价格变化*成交量强度",
+}
+
 
 class HtmlReportGenerator:
     """HTML 报告生成器
@@ -161,6 +180,7 @@ class HtmlReportGenerator:
             "factor_analysis": factor_analysis,
             "generation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "metadata": metadata or {},
+            "FACTOR_DESCRIPTIONS": FACTOR_DESCRIPTIONS,
         }
 
     def _analyze_factor_weights(self, population: list[Individual]) -> dict:
