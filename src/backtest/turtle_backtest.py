@@ -89,6 +89,7 @@ class TurtleBacktestRunner:
             BacktestResult 对象
         """
         from src.backtest.runner import BacktestResult
+        from src.strategy.turtle_position import PortfolioState
 
         if self.signal_generator is None:
             raise ValueError("未设置信号生成器，请提供 Individual 参数")
