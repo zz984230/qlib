@@ -13,11 +13,19 @@ from src.data.akshare_loader import AkshareLoader
 
 logger = logging.getLogger(__name__)
 
+# 缓存有效期（天）- 如果缓存数据的最新日期在这个范围内，就认为缓存有效
+CACHE_VALID_DAYS = 3  # 允许缓存数据最多延迟3天
+
 
 class TurtleDataLoader:
     """海龟策略数据加载器
 
     提供方便的数据加载和缓存功能，支持按周期获取数据。
+
+    缓存策略：
+    - 每个标的一个缓存文件: stock_{symbol}_full.parquet
+    - 如果缓存数据足够新（最新数据在 CACHE_VALID_DAYS 天内），直接使用
+    - 否则从网络获取最新数据并更新缓存
     """
 
     def __init__(
@@ -40,6 +48,9 @@ class TurtleDataLoader:
         self.loader.cache_dir = self.cache_dir / "raw"
         self.loader.cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # 内存缓存 - 同一次运行中避免重复加载
+        self._memory_cache: dict[str, pd.DataFrame] = {}
+
     def load_stock_data(
         self,
         symbol: str,
@@ -53,7 +64,7 @@ class TurtleDataLoader:
             symbol: 股票代码
             start_date: 开始日期
             end_date: 结束日期
-            reload: 是否重新加载
+            reload: 是否重新加载（强制从网络获取）
 
         Returns:
             OHLCV 数据
@@ -70,30 +81,174 @@ class TurtleDataLoader:
             else:
                 start_date = pd.to_datetime(start_date)
 
-            # 尝试从缓存加载
-            cache_file = self.cache_dir / f"stock_{symbol}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.parquet"
+            # 1. 检查内存缓存
+            cache_key = f"{symbol}_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}"
+            if self.use_cache and not reload and cache_key in self._memory_cache:
+                logger.info(f"从内存缓存加载数据: {symbol}")
+                return self._memory_cache[cache_key].copy()
 
-            if self.use_cache and cache_file.exists() and not reload:
-                logger.info(f"从缓存加载数据: {cache_file}")
-                return pd.read_parquet(cache_file)
+            # 2. 检查磁盘缓存
+            cached_data = self._load_from_disk_cache(symbol, start_date, end_date, reload)
 
-            # 从 akshare 加载
+            if cached_data is not None and len(cached_data) > 0:
+                # 存入内存缓存
+                self._memory_cache[cache_key] = cached_data
+                return cached_data.copy()
+
+            # 3. 从 akshare 加载
             logger.info(f"从 akshare 加载数据: {symbol}")
 
-            # 使用 AkshareLoader 获取数据
-            data = self._fetch_from_akshare(symbol, start_date, end_date)
+            # 获取更长时间范围的数据用于缓存
+            fetch_start = start_date - timedelta(days=30)  # 多获取30天用于后续使用
+            data = self._fetch_from_akshare(symbol, fetch_start, end_date)
 
-            # 保存到缓存
-            if self.use_cache and len(data) > 0:
-                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                data.to_parquet(cache_file)
-                logger.info(f"数据已缓存: {cache_file}")
+            if len(data) > 0:
+                # 保存全量缓存
+                if self.use_cache:
+                    full_cache_file = self.cache_dir / f"stock_{symbol}_full.parquet"
+                    full_cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    data.to_parquet(full_cache_file)
+                    logger.info(f"数据已缓存: {full_cache_file}")
+
+                # 裁剪到所需范围
+                mask = data.index >= start_date
+                result = data[mask].copy()
+
+                # 存入内存缓存
+                self._memory_cache[cache_key] = result
+
+                return result
 
             return data
 
         except Exception as e:
             logger.error(f"加载数据失败 {symbol}: {e}")
             return pd.DataFrame()
+
+    def _load_from_disk_cache(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        reload: bool
+    ) -> pd.DataFrame | None:
+        """从磁盘缓存加载数据
+
+        优先级：
+        1. 新格式缓存: stock_{symbol}_full.parquet
+        2. 旧格式缓存: stock_{symbol}_{start}_{end}.parquet（兼容）
+
+        Args:
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+            reload: 是否强制刷新
+
+        Returns:
+            缓存数据或 None
+        """
+        if not self.use_cache or reload:
+            return None
+
+        # 1. 尝试新格式缓存
+        full_cache_file = self.cache_dir / f"stock_{symbol}_full.parquet"
+
+        if full_cache_file.exists():
+            cached_data = pd.read_parquet(full_cache_file)
+
+            if len(cached_data) > 0:
+                cache_latest = cached_data.index[-1]
+                cache_earliest = cached_data.index[0]
+                days_old = (datetime.now() - cache_latest.to_pydatetime()).days
+
+                # 检查缓存数据是否覆盖所需范围（允许1天误差）
+                covers_start = cache_earliest <= start_date + timedelta(days=1)
+                covers_end = cache_latest >= end_date - timedelta(days=CACHE_VALID_DAYS + 1)
+
+                if days_old <= CACHE_VALID_DAYS and covers_start and covers_end:
+                    logger.info(f"从磁盘缓存加载数据: {symbol} (缓存最新: {cache_latest.strftime('%Y-%m-%d')}, {days_old}天前)")
+
+                    # 裁剪到所需范围
+                    mask = (cached_data.index >= start_date) & (cached_data.index <= end_date)
+                    return cached_data[mask].copy()
+                else:
+                    logger.info(f"缓存过期或数据不足: {symbol} (最新: {cache_latest.strftime('%Y-%m-%d')}, 需要: {end_date.strftime('%Y-%m-%d')})")
+
+        # 2. 尝试旧格式缓存（兼容）
+        old_cache_files = list(self.cache_dir.glob(f"stock_{symbol}_*.parquet"))
+        old_cache_files = [f for f in old_cache_files if "full" not in f.name]
+
+        best_match = None
+        best_match_file = None
+
+        for cache_file in old_cache_files:
+            try:
+                cached_data = pd.read_parquet(cache_file)
+
+                if len(cached_data) > 0:
+                    cache_latest = cached_data.index[-1]
+                    cache_earliest = cached_data.index[0]
+
+                    # 检查是否覆盖所需范围（允许1天误差）
+                    covers_start = cache_earliest <= start_date + timedelta(days=1)
+                    covers_end = cache_latest >= end_date - timedelta(days=CACHE_VALID_DAYS + 1)
+
+                    # 放宽条件：只要数据足够多且不太旧就使用
+                    has_enough_data = len(cached_data) >= 100
+
+                    if covers_start and covers_end and has_enough_data:
+                        days_old = (datetime.now() - cache_latest.to_pydatetime()).days
+                        logger.info(f"从旧格式缓存加载数据: {cache_file.name} ({days_old}天前)")
+
+                        # 裁剪到所需范围
+                        mask = (cached_data.index >= start_date) & (cached_data.index <= end_date)
+                        result = cached_data[mask].copy()
+
+                        # 迁移到新格式缓存
+                        full_cache_file = self.cache_dir / f"stock_{symbol}_full.parquet"
+                        cached_data.to_parquet(full_cache_file)
+                        logger.info(f"已迁移到新格式缓存: {full_cache_file}")
+
+                        return result
+
+                    # 记录最佳匹配（即使不完全满足条件）
+                    if has_enough_data and (best_match is None or cache_latest > best_match['latest']):
+                        best_match = {
+                            'data': cached_data,
+                            'latest': cache_latest,
+                            'earliest': cache_earliest,
+                            'file': cache_file
+                        }
+
+            except Exception as e:
+                logger.warning(f"读取旧缓存失败 {cache_file}: {e}")
+                continue
+
+        # 3. 如果没有完全匹配的，使用最佳匹配（数据足够多）
+        if best_match is not None:
+            cached_data = best_match['data']
+            cache_latest = best_match['latest']
+            cache_earliest = best_match['earliest']
+            cache_file = best_match['file']
+
+            days_old = (datetime.now() - cache_latest.to_pydatetime()).days
+            logger.info(f"使用最佳匹配缓存: {cache_file.name} (数据 {len(cached_data)} 条, {days_old}天前)")
+
+            # 裁剪到可用范围
+            actual_start = max(start_date, cache_earliest)
+            actual_end = min(end_date, cache_latest)
+
+            mask = (cached_data.index >= actual_start) & (cached_data.index <= actual_end)
+            result = cached_data[mask].copy()
+
+            # 迁移到新格式缓存
+            full_cache_file = self.cache_dir / f"stock_{symbol}_full.parquet"
+            cached_data.to_parquet(full_cache_file)
+            logger.info(f"已迁移到新格式缓存: {full_cache_file}")
+
+            return result
+
+        return None
 
     def _fetch_from_akshare(
         self,
@@ -238,16 +393,52 @@ class TurtleDataLoader:
         Args:
             symbol: 股票代码，None 表示清除所有缓存
         """
+        # 清除内存缓存
+        if symbol is None:
+            self._memory_cache.clear()
+        else:
+            keys_to_remove = [k for k in self._memory_cache if k.startswith(symbol)]
+            for k in keys_to_remove:
+                del self._memory_cache[k]
+
+        # 清除磁盘缓存
         if symbol is None:
             # 清除所有缓存
             for file in self.cache_dir.glob("stock_*.parquet"):
                 file.unlink()
                 logger.info(f"已删除缓存: {file}")
         else:
-            # 清除指定股票的缓存
+            # 清除指定股票的缓存（包括旧格式和新格式）
             for file in self.cache_dir.glob(f"stock_{symbol}_*.parquet"):
                 file.unlink()
                 logger.info(f"已删除缓存: {file}")
+
+    def get_cache_info(self, symbol: str) -> dict:
+        """获取缓存信息
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            缓存信息字典
+        """
+        cache_file = self.cache_dir / f"stock_{symbol}_full.parquet"
+
+        if not cache_file.exists():
+            return {"exists": False}
+
+        try:
+            data = pd.read_parquet(cache_file)
+            return {
+                "exists": True,
+                "file": str(cache_file),
+                "rows": len(data),
+                "start_date": str(data.index[0]),
+                "end_date": str(data.index[-1]),
+                "days": (data.index[-1] - data.index[0]).days,
+            }
+        except Exception as e:
+            return {"exists": False, "error": str(e)}
 
 
 def get_stock_data(
