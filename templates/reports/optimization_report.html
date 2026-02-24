@@ -831,6 +831,7 @@
                     <thead>
                         <tr>
                             <th class="has-tooltip" data-tip="回测时间周期&#10;1y=近1年, 3m=近3月, 1m=近1月">周期</th>
+                            <th class="has-tooltip" data-tip="回测时间段">回测区间</th>
                             <th class="has-tooltip" data-tip="总收益率&#10;=(期末净值/期初净值)-1&#10;正值表示盈利">收益率</th>
                             <th class="has-tooltip" data-tip="最大回撤&#10;从最高点到最低点的最大跌幅&#10;有效策略要求<=3%">最大回撤</th>
                             <th class="has-tooltip" data-tip="夏普比率&#10;=(年化收益-无风险利率)/年化波动&#10;>1为良好, >2为优秀">夏普比率</th>
@@ -840,6 +841,13 @@
                         {% for period, result in best_individual.backtest_results.items() %}
                         <tr>
                             <td class="mono">{{ period }}</td>
+                            <td class="mono" style="font-size: 12px;">
+                                {% if result.get('period_info') %}
+                                    {{ result.period_info.get('backtest_start', '')[:10] }} ~ {{ result.period_info.get('backtest_end', '')[:10] }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
                             <td class="mono {{ 'positive' if result.total_return > 0 else 'negative' }}">
                                 {{ "%.2f%%"|format(result.total_return * 100) }}
                             </td>
@@ -852,6 +860,56 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- 各周期交易详情 -->
+            {% if best_individual.trades_by_period %}
+            <div style="margin-top: 32px;">
+                <h3 class="has-tooltip" data-tip="各周期的交易记录详情&#10;包含买入/卖出操作、价格、数量和原因">交易详情</h3>
+                {% for period, trades in best_individual.trades_by_period.items() %}
+                {% if trades and trades|length > 0 %}
+                <div style="margin-bottom: 24px;">
+                    <h4 style="color: var(--cyan-glow); margin-bottom: 12px; font-size: 14px;">
+                        {{ period }} {% if best_individual.period_info.get(period) %}({{ best_individual.period_info[period].get('name', '') }}){% endif %}
+                    </h4>
+                    <div style="max-height: 300px; overflow-y: auto;">
+                        <table class="result-table" style="font-size: 12px;">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>操作</th>
+                                    <th>价格</th>
+                                    <th>数量</th>
+                                    <th>盈亏</th>
+                                    <th>原因</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for trade in trades %}
+                                <tr>
+                                    <td class="mono">{% if trade.date is string %}{{ trade.date[:10] }}{% else %}{{ trade.date.strftime('%Y-%m-%d') }}{% endif %}</td>
+                                    <td class="mono {{ 'positive' if trade.action == 'buy' else 'negative' }}">
+                                        {{ '买入' if trade.action == 'buy' else '卖出' }}
+                                    </td>
+                                    <td class="mono">{{ "%.2f"|format(trade.price) }}</td>
+                                    <td class="mono">{{ trade.get('units', trade.get('shares', '-')) }}</td>
+                                    <td class="mono {% if trade.get('pnl', 0) > 0 %}positive{% elif trade.get('pnl', 0) < 0 %}negative{% endif %}">
+                                        {% if trade.get('pnl') is not none %}
+                                            {{ "%.2f"|format(trade.pnl) }} ({{ "%.1f%%"|format(trade.get('pnl_ratio', 0) * 100) }})
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ trade.get('reason', '-') }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
             {% endif %}
         </section>
         {% endif %}
@@ -981,6 +1039,17 @@
         const bestFitness = {{ best_fitness_history|tojson }};
         const avgFitness = {{ avg_fitness_history|tojson }};
 
+        // 调试信息 - 在控制台输出数据
+        console.log('Evolution History Data:');
+        console.log('  Generations:', generations);
+        console.log('  Best Fitness:', bestFitness);
+        console.log('  Avg Fitness:', avgFitness);
+
+        // 检查数据是否为空
+        if (!generations || generations.length === 0) {
+            console.warn('No evolution history data available');
+        }
+
         // 创建渐变
         const bestGradient = ctx.createLinearGradient(0, 0, 0, 360);
         bestGradient.addColorStop(0, 'rgba(34, 211, 238, 0.4)');
@@ -1003,7 +1072,7 @@
                         borderWidth: 3,
                         tension: 0.4,
                         fill: true,
-                        pointRadius: 0,
+                        pointRadius: generations.length <= 10 ? 4 : 0,
                         pointHoverRadius: 6,
                         pointHoverBackgroundColor: '#22d3ee',
                         pointHoverBorderColor: '#0a0e17',
@@ -1017,7 +1086,7 @@
                         borderWidth: 2,
                         tension: 0.4,
                         fill: true,
-                        pointRadius: 0,
+                        pointRadius: generations.length <= 10 ? 4 : 0,
                         pointHoverRadius: 6,
                         pointHoverBackgroundColor: '#f472b6',
                         pointHoverBorderColor: '#0a0e17',

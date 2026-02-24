@@ -24,12 +24,14 @@ class BacktestResult:
         self.portfolio_value: pd.Series = None  # 组合净值
         self.positions: pd.DataFrame = None  # 持仓记录
         self.trades: pd.DataFrame = None  # 交易记录
+        self.trades_list: list = []  # 交易列表（用于报告）
         self.benchmark: pd.Series = None  # 基准净值
         self.metrics: dict[str, float] = {}  # 绩效指标
         self.start_date: str = ""
         self.end_date: str = ""
         self.strategy_name: str = ""
         self.cash: float = 0
+        self.period_info: dict = {}  # 周期信息（用于多周期回测）
 
     @property
     def total_return(self) -> float:

@@ -144,25 +144,74 @@ class HtmlReportGenerator:
         # 最优策略
         best_individual = max(population, key=lambda x: x.fitness) if population else None
 
-        # 演化历史数据
-        generations = [h.get("generation", i) for i, h in enumerate(evolution_history)]
-        best_fitness_history = [h.get("best_fitness", 0) for h in evolution_history]
-        avg_fitness_history = [h.get("avg_fitness", 0) for h in evolution_history]
+        # 演化历史数据 - 确保数据正确提取
+        generations = []
+        best_fitness_history = []
+        avg_fitness_history = []
+
+        for i, h in enumerate(evolution_history):
+            generations.append(h.get("generation", i + 1))
+            best_fitness_history.append(h.get("best_fitness", 0))
+            avg_fitness_history.append(h.get("avg_fitness", 0))
+
+        # 如果没有历史数据，添加一个默认值以避免图表为空
+        if not generations:
+            generations = [1]
+            best_fitness_history = [best_fitness]
+            avg_fitness_history = [avg_fitness]
 
         # 因子权重分析
         factor_analysis = self._analyze_factor_weights(population)
 
-        # 有效策略详情
+        # 有效策略详情 - 包含完整的回测信息
         valid_strategies_details = []
         for ind in valid_strategies[:10]:  # 最多显示 10 个
-            valid_strategies_details.append({
+            strategy_detail = {
                 "id": id(ind),
                 "fitness": ind.fitness,
                 "factors": ind.factor_weights,
                 "signal_threshold": ind.signal_threshold,
                 "exit_threshold": ind.exit_threshold,
                 "backtest_results": ind.backtest_results,
-            })
+            }
+
+            # 提取每个周期的交易详情
+            trades_by_period = {}
+            period_info = {}
+            if ind.backtest_results:
+                for period, result in ind.backtest_results.items():
+                    if isinstance(result, dict):
+                        trades_by_period[period] = result.get("trades", [])
+                        period_info[period] = result.get("period_info", {})
+
+            strategy_detail["trades_by_period"] = trades_by_period
+            strategy_detail["period_info"] = period_info
+            valid_strategies_details.append(strategy_detail)
+
+        # 为最优策略准备详细信息
+        best_individual_detail = None
+        if best_individual:
+            best_individual_detail = {
+                "factor_weights": best_individual.factor_weights,
+                "signal_threshold": best_individual.signal_threshold,
+                "exit_threshold": best_individual.exit_threshold,
+                "atr_period": best_individual.atr_period,
+                "stop_loss_atr": getattr(best_individual, 'stop_loss_atr', 2.0),
+                "fitness": best_individual.fitness,
+                "backtest_results": best_individual.backtest_results,
+            }
+
+            # 提取交易详情和周期信息
+            trades_by_period = {}
+            period_info = {}
+            if best_individual.backtest_results:
+                for period, result in best_individual.backtest_results.items():
+                    if isinstance(result, dict):
+                        trades_by_period[period] = result.get("trades", [])
+                        period_info[period] = result.get("period_info", {})
+
+            best_individual_detail["trades_by_period"] = trades_by_period
+            best_individual_detail["period_info"] = period_info
 
         return {
             "symbol": symbol,
@@ -171,7 +220,7 @@ class HtmlReportGenerator:
             "best_fitness": best_fitness,
             "avg_fitness": avg_fitness,
             "population_size": len(population),
-            "best_individual": best_individual,
+            "best_individual": best_individual_detail,
             "valid_strategies": valid_strategies_details,
             "evolution_history": evolution_history,
             "generations": generations,

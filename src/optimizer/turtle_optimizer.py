@@ -226,16 +226,19 @@ class TurtleGeneticOptimizer:
                 periods=["1y", "3m", "1m"]
             )
 
-            # 存储回测结果
-            individual.backtest_results = {
-                period: {
+            # 存储回测结果（包含详细信息和交易记录）
+            individual.backtest_results = {}
+            for period, result in backtest_results.items():
+                individual.backtest_results[period] = {
                     "total_return": result.total_return,
                     "max_drawdown": result.max_drawdown,
                     "sharpe_ratio": result.sharpe_ratio,
                     "annual_return": result.annual_return,
+                    # 周期信息
+                    "period_info": getattr(result, 'period_info', {}),
+                    # 交易记录
+                    "trades": getattr(result, 'trades_list', []),
                 }
-                for period, result in backtest_results.items()
-            }
 
             # 计算适应度
             fitness = self.fitness_evaluator.evaluate_backtest_based(

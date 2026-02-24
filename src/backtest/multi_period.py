@@ -65,6 +65,7 @@ class MultiPeriodBacktester:
             periods = ["1y", "3m", "1m"]
 
         results = {}
+        self._period_info = {}  # 存储周期信息
 
         for period in periods:
             period_config = PERIODS.get(period)
@@ -72,7 +73,7 @@ class MultiPeriodBacktester:
                 logger.warning(f"未知周期: {period}")
                 continue
 
-            # 获取周期数据
+            # 获取周期数据（包含预热期）
             period_data = self._get_period_data(data, period_config["days"])
 
             if len(period_data) < 50:  # 至少需要50天数据
@@ -88,30 +89,68 @@ class MultiPeriodBacktester:
             )
 
             result = runner.run(period_data)
+
+            # 计算实际回测的起止日期（从第50天开始）
+            warmup_days = 50
+            actual_start_idx = min(warmup_days, len(period_data) - 1)
+            actual_start_date = period_data.index[actual_start_idx]
+            actual_end_date = period_data.index[-1]
+
+            # 存储周期信息
+            self._period_info[period] = {
+                "name": period_config["name"],
+                "target_days": period_config["days"],
+                "weight": period_config["weight"],
+                "data_start": str(period_data.index[0]),
+                "data_end": str(period_data.index[-1]),
+                "backtest_start": str(actual_start_date),
+                "backtest_end": str(actual_end_date),
+                "actual_trading_days": len(period_data) - warmup_days,
+            }
+
+            # 在结果中添加周期信息
+            result.period_info = self._period_info[period]
+            result.trades_list = runner.trades  # 保存交易列表
+
             results[period] = result
 
             logger.info(
-                f"周期 {period} 回测完成: "
+                f"周期 {period} ({period_config['name']}) 回测完成: "
+                f"回测区间 {actual_start_date} ~ {actual_end_date}, "
                 f"收益={result.total_return:.2%}, "
                 f"回撤={result.max_drawdown:.2%}"
             )
 
         return results
 
+    def get_period_info(self) -> dict:
+        """获取周期信息"""
+        return getattr(self, '_period_info', {})
+
     def _get_period_data(self, data: pd.DataFrame, days: int) -> pd.DataFrame:
         """获取指定周期的数据
 
+        注意：回测需要至少 50 天的预热数据来计算技术指标，
+        所以我们返回足够的历史数据，并在 backtest_results 中
+        记录实际的回测起止日期。
+
         Args:
             data: 完整数据
-            days: 天数
+            days: 天数（回测目标周期）
 
         Returns:
-            周期数据
+            包含预热数据的周期数据
         """
-        if len(data) <= days:
-            return data
+        # 需要额外的 50 天作为预热期
+        min_required = days + 50
 
-        return data.iloc[-days:].copy()
+        if len(data) <= min_required:
+            # 数据不足，返回全部数据
+            return data.copy()
+
+        # 返回最近 (days + 50) 天的数据
+        # 回测器会从第 50 天开始，实际回测周期为 days 天
+        return data.iloc[-min_required:].copy()
 
     @staticmethod
     def get_period_dates(end_date: datetime, days: int) -> tuple[datetime, datetime]:

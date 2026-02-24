@@ -5,19 +5,20 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
-from src.backtest.runner import BacktestResult
-from src.strategy.turtle_position import (
-    TurtlePositionManager,
-    TurtleRiskManager,
-    Position,
-    PortfolioState,
-)
-from src.strategy.turtle_signals import TurtleSignalGenerator
-from src.optimizer.individual import Individual
+if TYPE_CHECKING:
+    from src.backtest.runner import BacktestResult
+    from src.strategy.turtle_position import (
+        TurtlePositionManager,
+        TurtleRiskManager,
+        Position,
+        PortfolioState,
+    )
+    from src.strategy.turtle_signals import TurtleSignalGenerator
+    from src.optimizer.individual import Individual
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class TurtleBacktestRunner:
         self,
         symbol: str,
         initial_cash: float,
-        individual: Individual | None = None,
+        individual: Any | None = None,
         commission: float = 0.0003,
     ):
         """初始化回测执行器
@@ -47,6 +48,13 @@ class TurtleBacktestRunner:
             individual: 策略个体（包含因子权重和阈值）
             commission: 手续费率
         """
+        # 延迟导入以避免循环依赖
+        from src.strategy.turtle_position import (
+            TurtlePositionManager,
+            TurtleRiskManager,
+            PortfolioState,
+        )
+
         self.symbol = symbol
         self.initial_cash = initial_cash
         self.commission = commission
@@ -54,6 +62,7 @@ class TurtleBacktestRunner:
 
         # 初始化各模块
         if individual:
+            from src.strategy.turtle_signals import TurtleSignalGenerator
             self.signal_generator = TurtleSignalGenerator(individual)
         else:
             self.signal_generator = None
@@ -70,7 +79,7 @@ class TurtleBacktestRunner:
         self.portfolio_values: list[float] = []
         self.dates: list = []
 
-    def run(self, data: pd.DataFrame) -> BacktestResult:
+    def run(self, data: pd.DataFrame):
         """执行回测
 
         Args:
@@ -79,6 +88,8 @@ class TurtleBacktestRunner:
         Returns:
             BacktestResult 对象
         """
+        from src.backtest.runner import BacktestResult
+
         if self.signal_generator is None:
             raise ValueError("未设置信号生成器，请提供 Individual 参数")
 
@@ -180,7 +191,7 @@ class TurtleBacktestRunner:
     def _check_stop_loss(
         self,
         data: pd.DataFrame,
-        position: Position
+        position: Any
     ) -> tuple[bool, str]:
         """检查止损
 
@@ -203,6 +214,8 @@ class TurtleBacktestRunner:
             data: 市场数据
             current_date: 当前日期
         """
+        from src.strategy.turtle_position import Position
+
         current_price = data["close"].iloc[-1]
         current_atr = self.position_manager.calculate_atr(data)
 
@@ -255,7 +268,7 @@ class TurtleBacktestRunner:
 
     def _add_to_position(
         self,
-        position: Position,
+        position: Any,
         data: pd.DataFrame,
         current_date: datetime,
         units_to_add: int
@@ -308,7 +321,7 @@ class TurtleBacktestRunner:
 
     def _close_position(
         self,
-        position: Position,
+        position: Any,
         current_price: float,
         current_date: datetime,
         reason: str
@@ -361,7 +374,7 @@ class TurtleBacktestRunner:
         self.portfolio_values.append(total_value)
         self.dates.append(current_date)
 
-    def _build_result(self, data: pd.DataFrame) -> BacktestResult:
+    def _build_result(self, data: pd.DataFrame):
         """构建回测结果
 
         Args:
@@ -370,6 +383,8 @@ class TurtleBacktestRunner:
         Returns:
             BacktestResult
         """
+        from src.backtest.runner import BacktestResult
+
         # 构建净值序列
         if len(self.dates) > 0:
             portfolio_value = pd.Series(self.portfolio_values, index=self.dates)
