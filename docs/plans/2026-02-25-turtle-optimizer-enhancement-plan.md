@@ -540,11 +540,35 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 
 ---
 
+## 实现进度
+
+**更新时间**: 2026-02-26
+
+### 已完成 (Task 1-5)
+
+| 任务 | 状态 | 提交 |
+|------|------|------|
+| Task 1: 添加基准数据到多周期回测 | ✅ 完成 | edba5c5 |
+| Task 2: 更新 HTML 报告生成器提取基准数据 | ✅ 完成 | cabd4c1 |
+| Task 3: 更新 HTML 模板添加基准对比图表 | ✅ 完成 | f6f9d38 |
+| Task 4: 添加新因子到因子池 | ✅ 完成 | 255f5d2 |
+| Task 5: 扩展风控参数范围 | ✅ 完成 | 8f39e6b |
+
+### 待完成 (Task 6-8)
+
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| Task 6: 优化适应度函数 | 待完成 | 添加超额收益加分和平滑回撤惩罚 |
+| Task 7: 更新 FACTOR_DESCRIPTIONS 字典 | 待完成 | 为新因子添加描述 |
+| Task 8: 集成测试 | 待完成 | 验证所有功能正常工作 |
+
+---
+
 ## 验收标准
 
-1. [ ] HTML 报告中正确显示三个周期的策略 vs 基准对比折线图
-2. [ ] 新增因子 (bb_ratio, roc, williams_r) 能被遗传算法正确探索
-3. [ ] 风控参数范围已扩展 (stop_loss_atr: 1.5-3.0, trailing_stop_trigger: 0.5-1.5)
+1. [x] HTML 报告中正确显示三个周期的策略 vs 基准对比折线图
+2. [x] 新增因子 (bb_ratio, roc, williams_r) 能被遗传算法正确探索
+3. [x] 风控参数范围已扩展 (stop_loss_atr: 1.5-3.0, trailing_stop_trigger: 0.5-1.5)
 4. [ ] 适应度函数包含超额收益加分和平滑回撤惩罚
 5. [ ] 所有现有测试通过
 6. [ ] 优化器可正常运行并生成报告
