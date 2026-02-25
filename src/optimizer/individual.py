@@ -222,6 +222,11 @@ FACTOR_POOL = {
 
     # 资金流
     "money_flow": "典型价格与成交量关联",            # 资金流向
+
+    # 新增因子
+    "bb_ratio": "布林带位置 (close - lower) / (upper - lower)",
+    "roc": "变动率 ROC(10)",
+    "williams_r": "威廉指标 %R",
 }
 
 

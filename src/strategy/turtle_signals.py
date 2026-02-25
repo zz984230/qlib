@@ -423,6 +423,37 @@ class TurtleSignalGenerator:
                         return float(price_change * volume_strength)
                 return 0.0
 
+            elif factor_name == "bb_ratio":
+                # 布林带位置: (close - lower) / (upper - lower)
+                period = 20
+                if len(close) < period:
+                    return 0.5
+                ma = _sma(close, period)
+                std = _std(close, period)
+                if len(ma) > 0 and not np.isnan(ma[-1]) and std[-1] > 0:
+                    upper = ma[-1] + 2 * std[-1]
+                    lower = ma[-1] - 2 * std[-1]
+                    return float((close[-1] - lower) / (upper - lower + 1e-10))
+                return 0.5
+
+            elif factor_name == "roc":
+                # 变动率 ROC(10)
+                period = 10
+                if len(close) < period + 1:
+                    return 0.0
+                return float((close[-1] - close[-period-1]) / (close[-period-1] + 1e-10))
+
+            elif factor_name == "williams_r":
+                # 威廉指标 %R
+                period = 14
+                if len(close) < period:
+                    return -50.0
+                highest = np.max(high[-period:])
+                lowest = np.min(low[-period:])
+                if highest - lowest < 1e-10:
+                    return -50.0
+                return float(-100 * (highest - close[-1]) / (highest - lowest))
+
             else:
                 logger.warning(f"未知因子: {factor_name}")
                 return 0.0
@@ -467,6 +498,18 @@ class TurtleSignalGenerator:
         elif factor_name == "obv":
             # OBV 变化率，使用 tanh
             return (np.tanh(value * 5) + 1) / 2
+
+        elif factor_name == "bb_ratio":
+            # 布林带位置已在 [0, 1]，但可能有超出
+            return np.clip(value, 0, 1)
+
+        elif factor_name == "roc":
+            # ROC 变动率，使用 tanh 归一化
+            return (np.tanh(value * 5) + 1) / 2
+
+        elif factor_name == "williams_r":
+            # 威廉指标范围 [-100, 0]，归一化到 [0, 1]
+            return np.clip((value + 100) / 100, 0, 1)
 
         else:
             # 默认使用 sigmoid
