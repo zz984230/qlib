@@ -23,9 +23,10 @@ class Individual:
 
     # ========== 海龟参数 (Phase 2 使用) ==========
     atr_period: int = 20
-    stop_loss_atr: float = 2.0
-    pyramid_interval_atr: float = 0.5
+    stop_loss_atr: float = 2.0           # 原值，范围扩展为 1.5-3.0
+    pyramid_interval_atr: float = 0.5    # 原值，范围扩展为 0.3-0.7
     max_pyramid_units: int = 4
+    trailing_stop_trigger: float = 1.0   # 移动止损触发点 (ATR倍数)，范围 0.5-1.5
 
     # ========== 评估结果 ==========
     fitness: float = 0.0
@@ -73,6 +74,9 @@ class Individual:
             self.signal_threshold,
             self.exit_threshold,
             float(self.atr_period),
+            self.stop_loss_atr,
+            self.pyramid_interval_atr,
+            self.trailing_stop_trigger,
         ])
 
         return genes
@@ -108,12 +112,18 @@ class Individual:
         signal_threshold = float(genes[n_factors]) if n_factors < len(genes) else 0.5
         exit_threshold = float(genes[n_factors + 1]) if n_factors + 1 < len(genes) else 0.3
         atr_period = int(genes[n_factors + 2]) if n_factors + 2 < len(genes) else 20
+        stop_loss_atr = float(genes[n_factors + 3]) if n_factors + 3 < len(genes) else 2.0
+        pyramid_interval_atr = float(genes[n_factors + 4]) if n_factors + 4 < len(genes) else 0.5
+        trailing_stop_trigger = float(genes[n_factors + 5]) if n_factors + 5 < len(genes) else 1.0
 
         return cls(
             factor_weights=factor_weights,
             signal_threshold=signal_threshold,
             exit_threshold=exit_threshold,
             atr_period=max(5, min(50, atr_period)),  # 限制 ATR 周期范围
+            stop_loss_atr=max(1.5, min(3.0, stop_loss_atr)),  # 限制范围
+            pyramid_interval_atr=max(0.3, min(0.7, pyramid_interval_atr)),  # 限制范围
+            trailing_stop_trigger=max(0.5, min(1.5, trailing_stop_trigger)),  # 限制范围
             generation=generation,
             parent_ids=parent_ids or [],
         )
@@ -153,6 +163,7 @@ class Individual:
             "stop_loss_atr": self.stop_loss_atr,
             "pyramid_interval_atr": self.pyramid_interval_atr,
             "max_pyramid_units": self.max_pyramid_units,
+            "trailing_stop_trigger": self.trailing_stop_trigger,
             "fitness": self.fitness,
             "backtest_results": self.backtest_results,
             "generation": self.generation,
@@ -170,6 +181,7 @@ class Individual:
             stop_loss_atr=data.get("stop_loss_atr", 2.0),
             pyramid_interval_atr=data.get("pyramid_interval_atr", 0.5),
             max_pyramid_units=data.get("max_pyramid_units", 4),
+            trailing_stop_trigger=data.get("trailing_stop_trigger", 1.0),
             fitness=data.get("fitness", 0.0),
             backtest_results=data.get("backtest_results", {}),
             generation=data.get("generation", 0),
