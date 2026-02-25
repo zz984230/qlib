@@ -238,6 +238,10 @@ class TurtleGeneticOptimizer:
                     "period_info": getattr(result, 'period_info', {}),
                     # 交易记录
                     "trades": getattr(result, 'trades_list', []),
+                    # 基准净值序列
+                    "benchmark_series": getattr(result, 'benchmark_series', None),
+                    # 策略净值序列
+                    "strategy_series": result.portfolio_value.to_dict() if hasattr(result.portfolio_value, 'to_dict') else {},
                 }
 
             # 计算适应度

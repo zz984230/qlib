@@ -112,6 +112,12 @@ class MultiPeriodBacktester:
             result.period_info = self._period_info[period]
             result.trades_list = runner.trades  # 保存交易列表
 
+            # 保存基准净值序列（只保留回测期间的基准）
+            if hasattr(result, 'benchmark') and result.benchmark is not None:
+                result.benchmark_series = result.benchmark.loc[actual_start_date:]
+            else:
+                result.benchmark_series = None
+
             results[period] = result
 
             logger.info(
