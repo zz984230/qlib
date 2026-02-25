@@ -213,6 +213,25 @@ class HtmlReportGenerator:
             best_individual_detail["trades_by_period"] = trades_by_period
             best_individual_detail["period_info"] = period_info
 
+        # 准备基准对比数据
+        benchmark_comparison = {}
+        if best_individual and best_individual.backtest_results:
+            for period, result in best_individual.backtest_results.items():
+                if isinstance(result, dict):
+                    strategy_series = result.get("strategy_series", {})
+                    benchmark_series = result.get("benchmark_series", {})
+
+                    if strategy_series and benchmark_series:
+                        # 转换为图表数据格式
+                        dates = sorted(set(strategy_series.keys()) & set(benchmark_series.keys()))
+                        benchmark_comparison[period] = {
+                            "dates": [str(d)[:10] for d in dates],  # 截取日期部分
+                            "strategy_values": [strategy_series.get(d, 0) for d in dates],
+                            "benchmark_values": [benchmark_series.get(d, 0) for d in dates],
+                            "strategy_return": result.get("total_return", 0),
+                            "benchmark_return": (list(benchmark_series.values())[-1] / list(benchmark_series.values())[0] - 1) if benchmark_series else 0,
+                        }
+
         return {
             "symbol": symbol,
             "generation": generation,
@@ -230,6 +249,7 @@ class HtmlReportGenerator:
             "generation_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "metadata": metadata or {},
             "FACTOR_DESCRIPTIONS": FACTOR_DESCRIPTIONS,
+            "benchmark_comparison": benchmark_comparison,
         }
 
     def _analyze_factor_weights(self, population: list[Individual]) -> dict:
