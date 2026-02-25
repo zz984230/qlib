@@ -914,6 +914,30 @@
         </section>
         {% endif %}
 
+        <!-- 基准对比图表区域 -->
+        {% if benchmark_comparison %}
+        <section class="glass-card">
+            <h2>策略与买入持有基准对比</h2>
+
+            <div class="two-column" style="grid-template-columns: repeat(3, 1fr);">
+                {% for period, data in benchmark_comparison.items() %}
+                <div style="background: rgba(17, 24, 39, 0.5); border-radius: 8px; padding: 16px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                    <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary);">
+                        {% if period == '1y' %}近1年{% elif period == '3m' %}近3月{% elif period == '1m' %}近1月{% else %}{{ period }}{% endif %}
+                    </h3>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                        策略收益: <span style="color: #22d3ee;">{{ (data.strategy_return * 100)|round(2) }}%</span> |
+                        基准收益: <span style="color: #f472b6;">{{ (data.benchmark_return * 100)|round(2) }}%</span>
+                    </div>
+                    <div style="height: 200px;">
+                        <canvas id="benchmark-chart-{{ period }}"></canvas>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
         <!-- 演化历史图表 -->
         <section class="glass-card">
             <h2 class="has-tooltip" data-tip="遗传算法各代的适应度变化&#10;展示算法收敛过程&#10;最优适应度应逐渐上升">遗传算法演化历史</h2>
@@ -1188,6 +1212,102 @@
                 }
             }
         });
+
+        // 绘制基准对比图表
+        {% if benchmark_comparison %}
+        {% for period, data in benchmark_comparison.items() %}
+        (function() {
+            const ctx = document.getElementById('benchmark-chart-{{ period }}');
+            if (!ctx) return;
+
+            const labels = {{ data.dates | tojson }};
+            const strategyValues = {{ data.strategy_values | tojson }};
+            const benchmarkValues = {{ data.benchmark_values | tojson }};
+
+            // 采样数据点（最多50个点）
+            const maxPoints = 50;
+            const step = Math.max(1, Math.floor(labels.length / maxPoints));
+            const sampledLabels = labels.filter((_, i) => i % step === 0);
+            const sampledStrategy = strategyValues.filter((_, i) => i % step === 0);
+            const sampledBenchmark = benchmarkValues.filter((_, i) => i % step === 0);
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sampledLabels,
+                    datasets: [
+                        {
+                            label: '策略净值',
+                            data: sampledStrategy,
+                            borderColor: '#22d3ee',
+                            backgroundColor: 'rgba(34, 211, 238, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                        },
+                        {
+                            label: '买入持有',
+                            data: sampledBenchmark,
+                            borderColor: '#f472b6',
+                            backgroundColor: 'rgba(244, 114, 182, 0.1)',
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            borderDash: [5, 5],
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#94a3b8',
+                                font: {
+                                    family: "'Noto Sans SC', sans-serif",
+                                    size: 11
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                            titleColor: '#f1f5f9',
+                            bodyColor: '#94a3b8',
+                            borderColor: 'rgba(99, 102, 241, 0.3)',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            padding: 10
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                color: '#64748b',
+                                maxTicksLimit: 5,
+                                font: {
+                                    family: "'JetBrains Mono', monospace",
+                                    size: 10
+                                }
+                            },
+                            grid: { color: 'rgba(99, 102, 241, 0.1)' }
+                        },
+                        y: {
+                            ticks: {
+                                color: '#64748b',
+                                font: {
+                                    family: "'JetBrains Mono', monospace",
+                                    size: 10
+                                }
+                            },
+                            grid: { color: 'rgba(99, 102, 241, 0.1)' }
+                        }
+                    }
+                }
+            });
+        })();
+        {% endfor %}
+        {% endif %}
     </script>
 </body>
 </html>
