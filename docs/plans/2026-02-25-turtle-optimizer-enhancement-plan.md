@@ -560,7 +560,7 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| Task 8: 集成测试 | 进行中 | 88 个单元测试全部通过，待运行优化器验证 |
+| Task 8: 集成测试 | ⚠️ 网络受限 | 88 个单元测试全部通过，优化器集成测试因网络问题暂时跳过 |
 
 ---
 
@@ -569,6 +569,6 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 1. [x] HTML 报告中正确显示三个周期的策略 vs 基准对比折线图
 2. [x] 新增因子 (bb_ratio, roc, williams_r) 能被遗传算法正确探索
 3. [x] 风控参数范围已扩展 (stop_loss_atr: 1.5-3.0, trailing_stop_trigger: 0.5-1.5)
-4. [ ] 适应度函数包含超额收益加分和平滑回撤惩罚
-5. [ ] 所有现有测试通过
+4. [x] 适应度函数包含超额收益加分和平滑回撤惩罚
+5. [x] 所有现有测试通过 (88/88)
 6. [ ] 优化器可正常运行并生成报告
