@@ -63,14 +63,14 @@ class TurtleDataLoader:
             OHLCV 数据
         """
         try:
-            # 计算默认日期范围（最近1年）
+            # 计算默认日期范围（最近2年，满足优化器400条数据要求）
             if end_date is None:
                 end_date = datetime.now()
             else:
                 end_date = pd.to_datetime(end_date)
 
             if start_date is None:
-                start_date = end_date - timedelta(days=365)  # 1年
+                start_date = end_date - timedelta(days=730)  # 2年
             else:
                 start_date = pd.to_datetime(start_date)
 
@@ -80,16 +80,16 @@ class TurtleDataLoader:
                 logger.info(f"从内存缓存加载数据: {symbol}")
                 return self._memory_cache[cache_key].copy()
 
-            # 2. 从天粒度缓存加载（优先）
+            # 2. 从天粒度缓存加载（合并缓存和网络数据）
             if self.use_cache and not reload:
                 cached_data = self._load_from_daily_cache(symbol, start_date, end_date)
                 if cached_data is not None and len(cached_data) > 0:
                     self._memory_cache[cache_key] = cached_data
                     return cached_data.copy()
 
-            # 3. 从 akshare 加载并按天缓存
+            # 3. 从 akshare 加载并按天缓存（增量模式）
             logger.info(f"从 akshare 加载数据: {symbol}")
-            data = self._fetch_and_cache_daily(symbol, start_date, end_date)
+            data = self._fetch_and_cache_daily_incremental(symbol, start_date, end_date)
 
             if len(data) > 0:
                 # 存入内存缓存
@@ -188,6 +188,85 @@ class TurtleDataLoader:
             self._save_daily_cache(symbol, data)
 
         return data
+
+    def _fetch_and_cache_daily_incremental(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> pd.DataFrame:
+        """从 akshare 获取数据并增量缓存（合并已有缓存）
+
+        Args:
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            OHLCV 数据
+        """
+        # 1. 读取已有缓存
+        existing_data = self._load_all_cached_data(symbol)
+
+        # 2. 获取网络数据
+        new_data = self._fetch_from_akshare(symbol, start_date, end_date)
+
+        if new_data is None or len(new_data) == 0:
+            # 网络获取失败，返回已有缓存
+            if existing_data is not None and len(existing_data) > 0:
+                logger.warning(f"网络获取失败，使用已有缓存: {len(existing_data)} 条")
+                return existing_data
+            return pd.DataFrame()
+
+        # 3. 合并数据
+        if existing_data is not None and len(existing_data) > 0:
+            # 合并并去重（保留新数据）
+            combined = pd.concat([existing_data, new_data])
+            combined = combined[~combined.index.duplicated(keep='last')]
+            combined = combined.sort_index()
+            logger.info(f"合并缓存: 原有 {len(existing_data)} 条 + 新获取 {len(new_data)} 条 = {len(combined)} 条")
+        else:
+            combined = new_data
+
+        # 4. 按天缓存合并后的数据
+        if self.use_cache:
+            self._save_daily_cache(symbol, combined)
+
+        return combined
+
+    def _load_all_cached_data(self, symbol: str) -> pd.DataFrame | None:
+        """加载所有已缓存的数据
+
+        Args:
+            symbol: 股票代码
+
+        Returns:
+            所有缓存数据或 None
+        """
+        daily_dir = self.daily_cache_dir / symbol
+        if not daily_dir.exists():
+            return None
+
+        cache_files = list(daily_dir.glob("*.parquet"))
+        if not cache_files:
+            return None
+
+        dfs = []
+        for cache_file in cache_files:
+            try:
+                df = pd.read_parquet(cache_file)
+                if len(df) > 0:
+                    dfs.append(df)
+            except Exception as e:
+                logger.warning(f"读取缓存失败 {cache_file}: {e}")
+
+        if not dfs:
+            return None
+
+        result = pd.concat(dfs).sort_index()
+        result = result[~result.index.duplicated(keep='last')]
+
+        return result
 
     def _save_daily_cache(self, symbol: str, data: pd.DataFrame) -> None:
         """按天保存缓存
