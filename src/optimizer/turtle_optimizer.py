@@ -229,6 +229,31 @@ class TurtleGeneticOptimizer:
             # 存储回测结果（包含详细信息和交易记录）
             individual.backtest_results = {}
             for period, result in backtest_results.items():
+                # 将基准净值序列转换为 dict（日期字符串 -> 净值）
+                benchmark_series = getattr(result, 'benchmark_series', None)
+                if benchmark_series is not None and hasattr(benchmark_series, 'to_dict'):
+                    # 将日期索引转换为字符串格式
+                    benchmark_dict = {}
+                    for idx, val in benchmark_series.items():
+                        if hasattr(idx, 'strftime'):
+                            benchmark_dict[idx.strftime('%Y-%m-%d')] = float(val)
+                        else:
+                            benchmark_dict[str(idx)[:10]] = float(val)
+                else:
+                    benchmark_dict = {}
+
+                # 将策略净值序列转换为 dict（日期字符串 -> 净值）
+                strategy_series = result.portfolio_value
+                if strategy_series is not None and hasattr(strategy_series, 'to_dict'):
+                    strategy_dict = {}
+                    for idx, val in strategy_series.items():
+                        if hasattr(idx, 'strftime'):
+                            strategy_dict[idx.strftime('%Y-%m-%d')] = float(val)
+                        else:
+                            strategy_dict[str(idx)[:10]] = float(val)
+                else:
+                    strategy_dict = {}
+
                 individual.backtest_results[period] = {
                     "total_return": result.total_return,
                     "max_drawdown": result.max_drawdown,
@@ -238,10 +263,10 @@ class TurtleGeneticOptimizer:
                     "period_info": getattr(result, 'period_info', {}),
                     # 交易记录
                     "trades": getattr(result, 'trades_list', []),
-                    # 基准净值序列
-                    "benchmark_series": getattr(result, 'benchmark_series', None),
-                    # 策略净值序列
-                    "strategy_series": result.portfolio_value.to_dict() if hasattr(result.portfolio_value, 'to_dict') else {},
+                    # 基准净值序列（已转换为字符串日期 -> 净值的 dict）
+                    "benchmark_series": benchmark_dict,
+                    # 策略净值序列（已转换为字符串日期 -> 净值的 dict）
+                    "strategy_series": strategy_dict,
                 }
 
             # 计算适应度

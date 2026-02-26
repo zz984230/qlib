@@ -224,22 +224,18 @@ class HtmlReportGenerator:
                     strategy_series = result.get("strategy_series", {})
                     benchmark_series = result.get("benchmark_series", {})
 
-                    # 使用 len() 判断是否为空，避免 pandas Series 布尔判断问题
+                    # 使用 len() 判断是否为空
                     if len(strategy_series) > 0 and len(benchmark_series) > 0:
-                        # 转换为图表数据格式
+                        # 取交集日期（两者都是 字符串日期 -> 净值 的 dict）
                         dates = sorted(set(strategy_series.keys()) & set(benchmark_series.keys()))
                         if len(dates) > 0:
-                            # 处理 benchmark_series 可能是 dict 或 numpy array 的情况
-                            if isinstance(benchmark_series, dict):
-                                benchmark_values_list = list(benchmark_series.values())
-                            else:
-                                # numpy array 或 pandas Series
-                                benchmark_values_list = list(benchmark_series)
+                            benchmark_values_list = [benchmark_series[d] for d in dates]
+                            strategy_values_list = [strategy_series[d] for d in dates]
 
                             benchmark_comparison[period] = {
-                                "dates": [str(d)[:10] for d in dates],  # 截取日期部分
-                                "strategy_values": [strategy_series.get(d, 0) for d in dates],
-                                "benchmark_values": [benchmark_series.get(d, 0) if isinstance(benchmark_series, dict) else benchmark_series[list(benchmark_series).index(d)] if d in list(benchmark_series) else 0 for d in dates],
+                                "dates": dates,  # 已经是字符串格式
+                                "strategy_values": strategy_values_list,
+                                "benchmark_values": benchmark_values_list,
                                 "strategy_return": result.get("total_return", 0),
                                 "benchmark_return": (benchmark_values_list[-1] / benchmark_values_list[0] - 1) if len(benchmark_values_list) >= 2 else 0,
                             }

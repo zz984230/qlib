@@ -112,9 +112,14 @@ class MultiPeriodBacktester:
             result.period_info = self._period_info[period]
             result.trades_list = runner.trades  # 保存交易列表
 
-            # 保存基准净值序列（只保留回测期间的基准）
+            # 保存基准净值序列（只保留回测期间的基准，并从初始资金重新归一化）
             if hasattr(result, 'benchmark') and result.benchmark is not None:
-                result.benchmark_series = result.benchmark.loc[actual_start_date:]
+                benchmark_series = result.benchmark.loc[actual_start_date:]
+                # 重新归一化：以回测开始日的基准值为起点，让基准从初始资金开始
+                if len(benchmark_series) > 0:
+                    start_value = benchmark_series.iloc[0]
+                    benchmark_series = self.initial_cash * (benchmark_series / start_value)
+                result.benchmark_series = benchmark_series
             else:
                 result.benchmark_series = None
 
