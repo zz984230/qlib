@@ -329,7 +329,12 @@ class TurtleDataLoader:
         start_date: datetime,
         end_date: datetime
     ) -> pd.DataFrame:
-        """从 akshare 获取数据
+        """从 akshare 获取数据（支持多数据源备用）
+
+        数据源优先级：
+        1. stock_zh_a_hist (东方财富)
+        2. stock_zh_a_daily (新浪)
+        3. stock_zh_a_hist_163 (网易)
 
         Args:
             symbol: 股票代码
@@ -340,32 +345,187 @@ class TurtleDataLoader:
             OHLCV 数据
         """
         try:
-            # 使用 stock_zh_a_hist 获取历史数据
             import akshare as ak
+        except ImportError:
+            logger.error("akshare 未安装，请运行: uv pip install akshare")
+            return pd.DataFrame()
 
-            data = ak.stock_zh_a_hist(
+        # 尝试多个数据源
+        data_sources = [
+            ("东方财富 (stock_zh_a_hist)", lambda: self._fetch_from_eastmoney(ak, symbol, start_date, end_date)),
+            ("新浪 (stock_zh_a_daily)", lambda: self._fetch_from_sina(ak, symbol, start_date, end_date)),
+            ("网易 (stock_zh_a_hist_163)", lambda: self._fetch_from_netease(ak, symbol, start_date, end_date)),
+        ]
+
+        for source_name, fetch_func in data_sources:
+            try:
+                logger.info(f"尝试数据源: {source_name}")
+                data = fetch_func()
+
+                if data is not None and len(data) > 0:
+                    logger.info(f"成功从 {source_name} 加载 {len(data)} 条数据")
+                    return data
+
+            except Exception as e:
+                logger.warning(f"{source_name} 获取失败: {e}")
+                continue
+
+        logger.error(f"所有数据源均获取失败: {symbol}")
+        return pd.DataFrame()
+
+    def _fetch_from_eastmoney(
+        self,
+        ak,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> pd.DataFrame | None:
+        """从东方财富获取数据（主数据源）
+
+        Args:
+            ak: akshare 模块
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            OHLCV 数据或 None
+        """
+        data = ak.stock_zh_a_hist(
+            symbol=symbol,
+            period="daily",
+            start_date=start_date.strftime("%Y%m%d"),
+            end_date=end_date.strftime("%Y%m%d"),
+            adjust="qfq"  # 前复权
+        )
+
+        if data is None or len(data) == 0:
+            return None
+
+        return self._normalize_akshare_data(data, {
+            "日期": "date",
+            "开盘": "open",
+            "收盘": "close",
+            "最高": "high",
+            "最低": "low",
+            "成交量": "volume",
+            "成交额": "amount",
+        })
+
+    def _fetch_from_sina(
+        self,
+        ak,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> pd.DataFrame | None:
+        """从新浪获取数据（备用数据源1）
+
+        Args:
+            ak: akshare 模块
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            OHLCV 数据或 None
+        """
+        try:
+            # stock_zh_a_daily 使用 sh/sz 前缀
+            # 判断股票代码所属交易所
+            if symbol.startswith("6"):
+                full_symbol = f"sh{symbol}"
+            else:
+                full_symbol = f"sz{symbol}"
+
+            data = ak.stock_zh_a_daily(symbol=full_symbol, adjust="qfq")
+
+            if data is None or len(data) == 0:
+                return None
+
+            # 筛选日期范围
+            data = self._normalize_akshare_data(data, {
+                "date": "date",
+                "open": "open",
+                "close": "close",
+                "high": "high",
+                "low": "low",
+                "volume": "volume",
+            })
+
+            if data is not None and len(data) > 0:
+                # 筛选日期范围
+                mask = (data.index >= start_date) & (data.index <= end_date)
+                data = data[mask]
+
+            return data if len(data) > 0 else None
+
+        except Exception as e:
+            logger.debug(f"新浪数据源异常: {e}")
+            return None
+
+    def _fetch_from_netease(
+        self,
+        ak,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> pd.DataFrame | None:
+        """从网易获取数据（备用数据源2）
+
+        Args:
+            ak: akshare 模块
+            symbol: 股票代码
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            OHLCV 数据或 None
+        """
+        try:
+            # 使用 163 数据源
+            data = ak.stock_zh_a_hist_163(
                 symbol=symbol,
-                period="daily",
-                start_date=start_date.strftime("%Y%m%d"),
-                end_date=end_date.strftime("%Y%m%d"),
-                adjust="qfq"  # 前复权
+                start_date=start_date.strftime("%Y-%m-%d"),
+                end_date=end_date.strftime("%Y-%m-%d"),
+                adjust="qfq"
             )
 
             if data is None or len(data) == 0:
-                logger.warning(f"未获取到数据: {symbol}")
-                return pd.DataFrame()
+                return None
 
-            # 重命名列
-            column_map = {
+            return self._normalize_akshare_data(data, {
                 "日期": "date",
                 "开盘": "open",
                 "收盘": "close",
                 "最高": "high",
                 "最低": "low",
                 "成交量": "volume",
-                "成交额": "amount",
-            }
+            })
 
+        except Exception as e:
+            logger.debug(f"网易数据源异常: {e}")
+            return None
+
+    def _normalize_akshare_data(
+        self,
+        data: pd.DataFrame,
+        column_map: dict[str, str]
+    ) -> pd.DataFrame | None:
+        """标准化 akshare 数据格式
+
+        Args:
+            data: 原始数据
+            column_map: 列名映射
+
+        Returns:
+            标准化后的数据或 None
+        """
+        try:
+            if data is None or len(data) == 0:
+                return None
+
+            # 重命名列
             data = data.rename(columns=column_map)
 
             # 设置日期索引
@@ -378,23 +538,19 @@ class TurtleDataLoader:
             available_cols = [c for c in required_cols if c in data.columns]
 
             if not available_cols:
-                logger.error(f"数据列不完整: {data.columns}")
-                return pd.DataFrame()
+                logger.warning(f"数据列不完整: {data.columns}")
+                return None
 
             data = data[available_cols].copy()
 
             # 去除空值
             data = data.dropna()
 
-            logger.info(f"成功加载 {len(data)} 条数据")
-            return data
+            return data if len(data) > 0 else None
 
-        except ImportError:
-            logger.error("akshare 未安装，请运行: uv pip install akshare")
-            return pd.DataFrame()
         except Exception as e:
-            logger.error(f"获取数据失败: {e}")
-            return pd.DataFrame()
+            logger.warning(f"数据标准化失败: {e}")
+            return None
 
     def load_period_data(
         self,
