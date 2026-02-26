@@ -556,11 +556,11 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 | Task 6: 优化适应度函数 | ✅ 完成 | - |
 | Task 7: 更新 FACTOR_DESCRIPTIONS 字典 | ✅ 完成 | - |
 
-### 待完成 (Task 8)
+### 已完成 (Task 8)
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| Task 8: 集成测试 | ⚠️ 网络受限 | 88 个单元测试全部通过，优化器集成测试因网络问题暂时跳过 |
+| Task 8: 集成测试 | ✅ 完成 | 88 个单元测试通过，优化器集成测试通过 |
 
 ---
 
@@ -571,4 +571,8 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 3. [x] 风控参数范围已扩展 (stop_loss_atr: 1.5-3.0, trailing_stop_trigger: 0.5-1.5)
 4. [x] 适应度函数包含超额收益加分和平滑回撤惩罚
 5. [x] 所有现有测试通过 (88/88)
-6. [ ] 优化器可正常运行并生成报告
+6. [x] 优化器可正常运行并生成报告
+
+## 额外优化
+
+- [x] 添加 akshare 多数据源备用 (东方财富/新浪/网易)
