@@ -544,7 +544,7 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 
 **更新时间**: 2026-02-26
 
-### 已完成 (Task 1-5)
+### 已完成 (Task 1-7)
 
 | 任务 | 状态 | 提交 |
 |------|------|------|
@@ -553,14 +553,14 @@ git commit -m "feat: complete turtle optimizer enhancement with benchmark compar
 | Task 3: 更新 HTML 模板添加基准对比图表 | ✅ 完成 | f6f9d38 |
 | Task 4: 添加新因子到因子池 | ✅ 完成 | 255f5d2 |
 | Task 5: 扩展风控参数范围 | ✅ 完成 | 8f39e6b |
+| Task 6: 优化适应度函数 | ✅ 完成 | - |
+| Task 7: 更新 FACTOR_DESCRIPTIONS 字典 | ✅ 完成 | - |
 
-### 待完成 (Task 6-8)
+### 待完成 (Task 8)
 
 | 任务 | 状态 | 说明 |
 |------|------|------|
-| Task 6: 优化适应度函数 | 待完成 | 添加超额收益加分和平滑回撤惩罚 |
-| Task 7: 更新 FACTOR_DESCRIPTIONS 字典 | 待完成 | 为新因子添加描述 |
-| Task 8: 集成测试 | 待完成 | 验证所有功能正常工作 |
+| Task 8: 集成测试 | 进行中 | 88 个单元测试全部通过，待运行优化器验证 |
 
 ---
 

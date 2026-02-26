@@ -38,6 +38,9 @@ FACTOR_DESCRIPTIONS = {
     "cci": "CCI商品通道指标/200, >1超买, <-1超卖",
     "obv": "OBV能量潮/MA(OBV,20)-1, 资金流向指标",
     "money_flow": "资金流向强度, 典型价格变化*成交量强度",
+    "bb_ratio": "布林带位置, (close-lower)/(upper-lower), >0.8超买, <0.2超卖",
+    "roc": "变动率ROC(10), (close-close_10)/close_10, 正值上涨趋势",
+    "williams_r": "威廉指标%R, -100~0, >-20超买, <-80超卖",
 }
 
 

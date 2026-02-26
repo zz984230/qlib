@@ -120,9 +120,10 @@ class FitnessEvaluator:
 
         适应度函数：
             - 基础分：加权收益（1y权重 60%，3m权重 30%，1m权重 10%）
-            - 回撤惩罚：超过3%大幅扣分
+            - 回撤惩罚：平滑线性惩罚，超过3%额外扣分
             - 夏普比率加分
             - 稳定性加分：三个周期表现一致性
+            - 超额收益加分：跑赢买入持有基准才加分
 
         Args:
             individual: 待评估个体
@@ -146,28 +147,50 @@ class FitnessEvaluator:
                 continue
 
             result = backtest_results[period]
-            period_return = result.total_return
+            # 支持字典和 BacktestResult 对象
+            if isinstance(result, dict):
+                period_return = result.get("total_return", 0)
+            else:
+                period_return = result.total_return
             returns[period] = period_return
             weighted_return += period_return * weight
 
-        # 回撤惩罚
-        max_drawdowns = []
+        # 计算超额收益加分（只有跑赢基准才加分）
+        excess_return_bonus = 0.0
         for period, result in backtest_results.items():
-            max_drawdowns.append(result.max_drawdown)
+            if isinstance(result, dict):
+                strategy_ret = result.get("total_return", 0)
+                benchmark_series = result.get("benchmark_series", {})
+                if benchmark_series:
+                    values = list(benchmark_series.values())
+                    if len(values) >= 2:
+                        benchmark_ret = values[-1] / values[0] - 1
+                        excess = strategy_ret - benchmark_ret
+                        # 只有跑赢基准才加分
+                        excess_return_bonus += max(0, excess) * 5.0
 
-        max_dd = max(max_drawdowns) if max_drawdowns else 0.0
+        # 平滑回撤惩罚（线性惩罚替代突变惩罚）
         drawdown_penalty = 0.0
+        for period, result in backtest_results.items():
+            if isinstance(result, dict):
+                dd = result.get("max_drawdown", 0)
+            else:
+                dd = result.max_drawdown
 
-        if max_dd > self.config.max_drawdown_limit:
-            drawdown_penalty = (
-                -(max_dd - self.config.max_drawdown_limit)
-                * self.config.drawdown_penalty_weight
-            )
+            # 线性惩罚：回撤每增加 1%，惩罚增加
+            if dd > 0.01:  # 超过 1% 开始惩罚
+                drawdown_penalty -= (dd - 0.01) * 5.0
+            if dd > self.config.max_drawdown_limit:
+                drawdown_penalty -= (dd - self.config.max_drawdown_limit) * 10.0  # 超限额外惩罚
 
         # 夏普比率加分
         sharpe = 0.0
         if "1y" in backtest_results:
-            sharpe = backtest_results["1y"].sharpe_ratio
+            result = backtest_results["1y"]
+            if isinstance(result, dict):
+                sharpe = result.get("sharpe_ratio", 0)
+            else:
+                sharpe = result.sharpe_ratio
         sharpe_bonus = sharpe * self.config.sharpe_bonus_weight
 
         # 稳定性加分（收益波动越小加分越多）
@@ -183,6 +206,7 @@ class FitnessEvaluator:
             + drawdown_penalty
             + sharpe_bonus
             + stability_bonus
+            + excess_return_bonus
         )
 
         return fitness
