@@ -160,21 +160,27 @@ def _adx(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int = 14)
     if len(close) < period * 2:
         return np.zeros(len(close))
 
+    # plus_dm 和 minus_dm 比 high 少一个元素（因为是 diff）
     plus_dm = np.where(high[1:] > high[:-1], high[1:] - high[:-1], 0)
     minus_dm = np.where(low[1:] < low[:-1], low[:-1] - low[1:], 0)
 
-    tr = _atr(high, low, close, 1)
     atr = _atr(high, low, close, period)
+    # atr 从索引 1 开始与 plus_dm/minus_dm 对齐
+    atr_aligned = atr[1:]
 
-    plus_di = 100 * _ema(plus_dm, period) / (atr + 1e-10)
-    minus_di = 100 * _ema(minus_dm, period) / (atr + 1e-10)
+    plus_di = 100 * _ema(plus_dm, period) / (atr_aligned + 1e-10)
+    minus_di = 100 * _ema(minus_dm, period) / (atr_aligned + 1e-10)
 
     dx = 100 * np.abs(plus_di - minus_di) / (plus_di + minus_di + 1e-10)
 
     adx = _ema(dx, period)
     adx = np.nan_to_num(adx, nan=0.0)
 
-    return adx
+    # 返回与输入 close 相同长度的数组，前面填充 0
+    result = np.zeros(len(close))
+    result[-len(adx):] = adx
+
+    return result
 
 
 class TurtleSignalGenerator:
