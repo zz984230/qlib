@@ -79,6 +79,10 @@ class TurtleBacktestRunner:
         self.portfolio_values: list[float] = []
         self.dates: list = []
 
+        # 指标缓存（预计算优化）
+        self._indicator_cache = None
+        self._atr_cache = None
+
     def run(self, data: pd.DataFrame):
         """执行回测
 
@@ -90,6 +94,7 @@ class TurtleBacktestRunner:
         """
         from src.backtest.runner import BacktestResult
         from src.strategy.turtle_position import PortfolioState
+        from src.strategy.turtle_signals import IndicatorCache
 
         if self.signal_generator is None:
             raise ValueError("未设置信号生成器，请提供 Individual 参数")
@@ -105,12 +110,19 @@ class TurtleBacktestRunner:
         # 计算指标（提前计算以加速）
         data = self._prepare_data(data)
 
-        # 逐日回测
+        # [优化] 预计算所有技术指标并缓存
+        self._indicator_cache = IndicatorCache(data)
+        self.signal_generator.set_cache(self._indicator_cache)
+        self._atr_cache = self._indicator_cache.get("atr14")
+
+        logger.info(f"技术指标预计算完成")
+
+        # 逐日回测（使用缓存的指标）
         for i in range(50, len(data)):  # 从第50天开始，确保指标有效
             current_date = data.index[i]
-            current_data = data.iloc[:i+1]  # 历史数据
+            current_price = data["close"].iloc[i]
 
-            self._process_day(current_data, current_date, i)
+            self._process_day_fast(i, current_date, current_price)
 
         # 构建结果
         return self._build_result(data)
@@ -136,6 +148,165 @@ class TurtleBacktestRunner:
                     data[col] = data["close"]  # 使用 close 作为默认
 
         return data
+
+    def _process_day_fast(
+        self,
+        bar_index: int,
+        current_date: datetime,
+        current_price: float
+    ) -> None:
+        """快速处理单个交易日（使用预计算指标）
+
+        Args:
+            bar_index: 当前K线索引
+            current_date: 当前日期
+            current_price: 当前价格
+        """
+        position = self.portfolio.get_position(self.symbol)
+
+        # 1. 检查止损
+        if position:
+            current_atr = self._atr_cache[bar_index] if self._atr_cache is not None else 0.0
+            should_exit, exit_type = self._check_stop_loss_fast(position, current_price, current_atr)
+            if should_exit:
+                self._close_position(position, current_price, current_date, f"止损 ({exit_type})")
+
+        # 2. 检查出场信号
+        if position:
+            if self.signal_generator.should_exit(idx=bar_index):
+                self._close_position(position, current_price, current_date, "信号出场")
+
+        # 3. 检查入场信号
+        if not position:
+            if self.signal_generator.should_enter(idx=bar_index):
+                self._open_position_fast(bar_index, current_date)
+
+        # 4. 检查加仓
+        if position:
+            current_atr = self._atr_cache[bar_index] if self._atr_cache is not None else 0.0
+            units_to_add = self.position_manager.get_pyramid_positions(
+                position, current_price, current_atr
+            )
+            if units_to_add > 0:
+                self._add_to_position_fast(position, bar_index, current_date, units_to_add)
+
+        # 5. 更新持仓最高价
+        if position:
+            self.position_manager.update_position(position, current_price)
+
+        # 6. 记录组合净值
+        self._record_portfolio_value(current_date, current_price)
+
+    def _check_stop_loss_fast(
+        self,
+        position: Any,
+        current_price: float,
+        current_atr: float
+    ) -> tuple[bool, str]:
+        """快速检查止损（使用预计算的ATR）"""
+        return self.risk_manager.check_stop_loss(position, current_price, current_atr)
+
+    def _open_position_fast(self, bar_index: int, current_date: datetime) -> None:
+        """快速开仓（使用预计算的ATR）"""
+        from src.strategy.turtle_position import Position
+
+        current_price = float(self._indicator_cache.close[bar_index])
+        current_atr = float(self._atr_cache[bar_index]) if self._atr_cache is not None and not np.isnan(self._atr_cache[bar_index]) else 0.0
+
+        if current_atr <= 0:
+            return
+
+        # 计算单位规模
+        unit_size = self.position_manager.calculate_unit_size(current_price, current_atr)
+
+        if unit_size <= 0:
+            return
+
+        # 计算成本
+        cost = unit_size * current_price * (1 + self.commission)
+
+        # 检查资金
+        if cost > self.portfolio.cash:
+            unit_size = int(self.portfolio.cash / (current_price * (1 + self.commission)))
+            cost = unit_size * current_price * (1 + self.commission)
+
+        if unit_size <= 0:
+            return
+
+        # 计算止损价格
+        stop_loss = self.risk_manager.calculate_stop_loss(current_price, current_atr)
+
+        # 创建持仓
+        position = Position(
+            symbol=self.symbol,
+            entry_price=current_price,
+            units=unit_size,
+            avg_price=current_price,
+            stop_loss_price=stop_loss,
+            entry_atr=current_atr,
+            entry_date=str(current_date),
+        )
+
+        self.portfolio.cash -= cost
+        self.portfolio.add_position(position)
+
+        # 记录交易
+        self.trades.append({
+            "date": current_date,
+            "symbol": self.symbol,
+            "action": "buy",
+            "price": current_price,
+            "units": unit_size,
+            "cost": cost,
+            "reason": "信号入场",
+        })
+
+    def _add_to_position_fast(
+        self,
+        position: Any,
+        bar_index: int,
+        current_date: datetime,
+        units_to_add: int
+    ) -> None:
+        """快速加仓（使用预计算的ATR）"""
+        current_price = float(self._indicator_cache.close[bar_index])
+        current_atr = float(self._atr_cache[bar_index]) if self._atr_cache is not None and not np.isnan(self._atr_cache[bar_index]) else 0.0
+
+        if current_atr <= 0:
+            return
+
+        # 计算加仓数量
+        unit_size = self.position_manager.calculate_unit_size(current_price, current_atr)
+        actual_units = min(unit_size * units_to_add, int(self.portfolio.cash / current_price))
+
+        if actual_units <= 0:
+            return
+
+        cost = actual_units * current_price * (1 + self.commission)
+
+        # 更新持仓
+        total_units = position.units + actual_units
+        total_cost = position.avg_price * position.units + current_price * actual_units
+        position.avg_price = total_cost / total_units
+        position.units = total_units
+
+        # 更新止损价格（使用最新入场价）
+        position.stop_loss_price = self.risk_manager.calculate_stop_loss(
+            current_price, current_atr, is_pyramid=True
+        )
+
+        self.portfolio.cash -= cost
+
+        # 记录交易
+        self.trades.append({
+            "date": current_date,
+            "symbol": self.symbol,
+            "action": "buy",
+            "price": current_price,
+            "units": actual_units,
+            "cost": cost,
+            "reason": f"金字塔加仓 (第{int(total_units / max(1, unit_size))}单位)",
+        })
 
     def _process_day(
         self,
