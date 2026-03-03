@@ -139,7 +139,10 @@ class TurtleGeneticOptimizer:
             if valid_strategies:
                 self.valid_strategies_found.extend(valid_strategies)
 
-                # 处理有效策略
+                # 保存有效策略到策略池（交互和非交互模式都保存）
+                self._save_valid_strategies(valid_strategies, generation)
+
+                # 处理有效策略（交互模式下等待用户确认）
                 if self.interactive:
                     should_continue = self._handle_valid_strategies(
                         valid_strategies, generation, population
@@ -302,6 +305,37 @@ class TurtleGeneticOptimizer:
                     valid.append(individual)
 
         return valid
+
+    def _save_valid_strategies(
+        self,
+        valid_strategies: list[Individual],
+        generation: int
+    ) -> list[str]:
+        """保存有效策略到策略池（交互和非交互模式通用）
+
+        Args:
+            valid_strategies: 有效策略列表
+            generation: 当前代数
+
+        Returns:
+            保存的策略ID列表
+        """
+        strategy_ids = []
+        for individual in valid_strategies:
+            strategy_id = self.strategy_pool.add(
+                individual,
+                self.symbol,
+                individual.backtest_results,
+                {"generation": generation}
+            )
+            strategy_ids.append(strategy_id)
+            logger.info(
+                f"发现有效策略 Gen{generation}: "
+                f"适应度={individual.fitness:.4f}, "
+                f"ID={strategy_id}"
+            )
+
+        return strategy_ids
 
     def _handle_valid_strategies(
         self,

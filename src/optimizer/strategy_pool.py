@@ -8,9 +8,38 @@ import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any
+import numpy as np
+import pandas as pd
 
 from src.optimizer.individual import Individual
+
+
+def _convert_to_serializable(obj: Any) -> Any:
+    """将numpy和pandas类型转换为Python原生类型，用于JSON序列化
+
+    Args:
+        obj: 任意对象
+
+    Returns:
+        可序列化的对象
+    """
+    if isinstance(obj, dict):
+        return {k: _convert_to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_to_serializable(v) for v in obj]
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return _convert_to_serializable(obj.tolist())
+    elif isinstance(obj, (pd.Timestamp, datetime)):
+        return obj.isoformat()
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +101,11 @@ class StrategyPool:
             "metadata": metadata or {},
         }
 
-        # 保存到文件
+        # 保存到文件（先转换numpy类型为Python原生类型）
         file_path = self.pool_dir / f"{strategy_id}.json"
+        serializable_data = _convert_to_serializable(strategy_data)
         with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(strategy_data, f, indent=2, ensure_ascii=False)
+            json.dump(serializable_data, f, indent=2, ensure_ascii=False)
 
         logger.info(f"策略已保存: {strategy_id} -> {file_path}")
 

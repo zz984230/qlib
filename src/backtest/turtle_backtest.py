@@ -159,19 +159,19 @@ class TurtleBacktestRunner:
             should_exit, exit_type = self._check_stop_loss(data, position)
             if should_exit:
                 self._close_position(position, current_price, current_date, f"止损 ({exit_type})")
-                return
+                # 注意：不要 return，继续记录净值
 
         # 2. 检查出场信号
         if position:
             if self.signal_generator.should_exit(data):
                 self._close_position(position, current_price, current_date, "信号出场")
-                return
+                # 注意：不要 return，继续记录净值
 
         # 3. 检查入场信号
         if not position:
             if self.signal_generator.should_enter(data):
                 self._open_position(data, current_date)
-                return
+                # 注意：不要 return，继续记录净值
 
         # 4. 检查加仓
         if position:
@@ -186,7 +186,7 @@ class TurtleBacktestRunner:
         if position:
             self.position_manager.update_position(position, current_price)
 
-        # 6. 记录组合净值
+        # 6. 记录组合净值（每天都记录）
         self._record_portfolio_value(current_date, current_price)
 
     def _check_stop_loss(
