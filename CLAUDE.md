@@ -88,6 +88,24 @@ All configs in `configs/` are YAML:
 - `strategy.yaml`: Strategy params (topk, n_drop), model config, factor expressions
 - `risk.yaml`: Position limits, stop loss, optimization triggers
 
+### Data Caching Patterns
+
+**AkshareLoader**: Market-level data caching
+- Fetches entire market (e.g., csi300) data from akshare
+- Caches as parquet files in `data/` directory
+- Used by standard backtest scripts
+
+**TurtleDataLoader**: Symbol-level daily-granularity caching
+- Fetches individual stock data with daily granularity
+- Incremental cache updates: preserves existing data, only fetches new days
+- Cache location: `data/cache/turtle/{symbol}/`
+- Key methods: `load_data()`, `refresh_cache()`, `get_cache_info()`
+- Used by turtle genetic optimizer and low drawdown strategy
+
+Choose the appropriate loader based on your use case:
+- Market-wide backtesting: Use `AkshareLoader`
+- Single-stock optimization: Use `TurtleDataLoader` (faster incremental updates)
+
 ### Adding New Strategy
 
 1. Create class inheriting `BaseStrategy` in `src/strategy/advanced.py`
@@ -185,8 +203,12 @@ Comprehensive report includes:
 ## Scripts
 
 ```bash
-# Update data from akshare
+# Update data from akshare (market-level)
 uv run python scripts/update_data.py --market csi300 --verify
+
+# Refresh daily-granularity cache for single stock (symbol-level)
+uv run python scripts/refresh_cache.py --symbol 601138 --days 365
+uv run python scripts/refresh_cache.py --symbol 601138 --clear  # clear cache first
 
 # Run standard backtest
 uv run python scripts/run_backtest.py --strategy dual_ma --start-date 2023-01-01 --save
@@ -214,6 +236,7 @@ uv run python scripts/run_agent.py --mode search    # Search new strategies
 | Script | Description |
 |--------|-------------|
 | `update_data.py` | Fetch stock data from akshare, save as parquet cache |
+| `refresh_cache.py` | Refresh daily-granularity cache for stock data with incremental updates |
 | `run_backtest.py` | Standard strategy backtest with qlib/vectorized engine |
 | `run_analysis.py` | Complete analysis pipeline: backtest + performance report |
 | `low_drawdown_report.py` | Low drawdown strategy (target 3%) + HTML report generation |
