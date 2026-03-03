@@ -460,6 +460,67 @@ class TurtleSignalGenerator:
                     return -50.0
                 return float(-100 * (highest - close[-1]) / (highest - lowest))
 
+            # ========== 新增因子 ==========
+            elif factor_name == "volume_trend":
+                # 成交量趋势: MA(volume, 5) / MA(volume, 20)
+                if volume is None or len(volume) < 21:
+                    return 1.0
+                ma_vol_5 = _sma(volume, 5)
+                ma_vol_20 = _sma(volume, 20)
+                if len(ma_vol_20) > 0 and not np.isnan(ma_vol_20[-1]) and ma_vol_20[-1] > 0:
+                    return float(ma_vol_5[-1] / ma_vol_20[-1])
+                return 1.0
+
+            elif factor_name == "risk_adj_momentum":
+                # 风险调整动量: (close - close_n10) / close_n10 / (std / close)
+                if len(close) < 21:
+                    return 0.0
+                momentum_val = (close[-1] - close[-11]) / (close[-11] + 1e-10)
+                std_val = _std(close, 20)
+                if len(std_val) > 0 and not np.isnan(std_val[-1]) and std_val[-1] > 0:
+                    return float(momentum_val / (std_val[-1] / close[-1] + 1e-10))
+                return 0.0
+
+            elif factor_name == "relative_strength":
+                # 相对强度: close / MA(close, 50) - 1
+                period = 50
+                if len(close) < period:
+                    return 0.0
+                ma50 = _sma(close, period)
+                if len(ma50) > 0 and not np.isnan(ma50[-1]) and ma50[-1] > 0:
+                    return float(close[-1] / ma50[-1] - 1)
+                return 0.0
+
+            elif factor_name == "vol_adj_return":
+                # 波动调整收益: (close - close_n1) / ATR
+                if len(close) < 2:
+                    return 0.0
+                atr_val = _atr(high, low, close, 14)
+                if len(atr_val) > 0 and not np.isnan(atr_val[-1]) and atr_val[-1] > 0:
+                    price_change = close[-1] - close[-2]
+                    return float(price_change / atr_val[-1])
+                return 0.0
+
+            elif factor_name == "trend_consistency":
+                # 趋势一致性: 计算过去10天中上涨天数占比
+                period = 10
+                if len(close) < period + 1:
+                    return 0.5
+                changes = np.diff(close[-period-1:])
+                up_days = np.sum(changes > 0)
+                return float(up_days / period)
+
+            elif factor_name == "higher_highs":
+                # 连续新高计数: 统计过去5天创新高的次数
+                period = 5
+                if len(high) < period + 1:
+                    return 0.0
+                count = 0
+                for i in range(-period, 0):
+                    if high[i] > np.max(high[max(0, i-period):i]):
+                        count += 1
+                return float(count / period)
+
             else:
                 logger.warning(f"未知因子: {factor_name}")
                 return 0.0
@@ -516,6 +577,31 @@ class TurtleSignalGenerator:
         elif factor_name == "williams_r":
             # 威廉指标范围 [-100, 0]，归一化到 [0, 1]
             return np.clip((value + 100) / 100, 0, 1)
+
+        # ========== 新增因子归一化 ==========
+        elif factor_name == "volume_trend":
+            # 量比趋势，使用对数归一化
+            return np.clip(np.log1p(value) / 3, 0, 1)
+
+        elif factor_name == "risk_adj_momentum":
+            # 风险调整动量，使用 tanh
+            return (np.tanh(value) + 1) / 2
+
+        elif factor_name == "relative_strength":
+            # 相对强度，使用 tanh
+            return (np.tanh(value * 10) + 1) / 2
+
+        elif factor_name == "vol_adj_return":
+            # 波动调整收益，使用 tanh
+            return (np.tanh(value) + 1) / 2
+
+        elif factor_name == "trend_consistency":
+            # 趋势一致性，已在 [0, 1]
+            return np.clip(value, 0, 1)
+
+        elif factor_name == "higher_highs":
+            # 连续新高，已在 [0, 1]
+            return np.clip(value, 0, 1)
 
         else:
             # 默认使用 sigmoid

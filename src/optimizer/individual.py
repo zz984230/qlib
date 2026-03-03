@@ -204,41 +204,50 @@ class Individual:
         )
 
 
-# 因子池定义（15个核心因子）
+# 因子池定义（25个核心因子）
+# 分类参考量化交易因子挖掘最佳实践：动量、技术、波动、量价、趋势、风险调整
 FACTOR_POOL = {
-    # 动量因子
+    # ========== 动量因子 ==========
     "ma_ratio": "MA5 / MA20 - 1",                    # 均线偏离度
     "ma_cross": "MA5 > MA20",                        # 金叉死叉
-    "momentum": "(close - close_n5) / close_n5",    # 动量
+    "momentum": "(close - close_n5) / close_n5",    # 短期动量
     "price_momentum": "close / close_n20 - 1",      # 价格动量
+    "roc": "变动率 ROC(10)",                         # 变动率
 
-    # 技术指标
+    # ========== 技术指标 ==========
     "rsi": "RSI / 100",                             # RSI相对强弱
     "macd": "MACD / MACD_signal",                   # MACD
     "kdj": "(K - D) / 100",                         # KDJ
+    "williams_r": "威廉指标 %R",                    # 威廉指标
 
-    # 波动率
+    # ========== 波动率 ==========
     "volatility": "STD(close, 20) / close",         # 波动率
     "atr_ratio": "ATR / close",                     # ATR比率
 
-    # 成交量
+    # ========== 成交量 ==========
     "volume_ratio": "volume / MA(volume, 20)",      # 量比
     "volume_price": "volume * (close / close_n1 - 1)",  # 量价配合
+    "volume_trend": "MA(volume, 5) / MA(volume, 20)",   # 成交量趋势
 
-    # 趋势
+    # ========== 趋势 ==========
     "adx": "ADX / 100",                             # 趋势强度
     "cci": "CCI / 200",                             # CCI
 
-    # 能量
+    # ========== 能量/资金流 ==========
     "obv": "OBV / MA(OBV, 20)",                     # OBV能量潮
-
-    # 资金流
     "money_flow": "典型价格与成交量关联",            # 资金流向
 
-    # 新增因子
+    # ========== 布林带 ==========
     "bb_ratio": "布林带位置 (close - lower) / (upper - lower)",
-    "roc": "变动率 ROC(10)",
-    "williams_r": "威廉指标 %R",
+
+    # ========== 风险调整因子 (新增) ==========
+    "risk_adj_momentum": "动量 / 波动率",           # 风险调整动量
+    "relative_strength": "close / MA(close, 50) - 1",  # 相对强度
+    "vol_adj_return": "(close - close_n1) / ATR",   # 波动调整收益
+
+    # ========== 趋势质量因子 (新增) ==========
+    "trend_consistency": "趋势方向一致性",           # 趋势一致性
+    "higher_highs": "连续新高计数",                 # 突破强度
 }
 
 
