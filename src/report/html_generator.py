@@ -144,8 +144,23 @@ class HtmlReportGenerator:
         best_fitness = max(fitness_values) if fitness_values else 0
         avg_fitness = sum(fitness_values) / len(fitness_values) if fitness_values else 0
 
-        # 最优策略
-        best_individual = max(population, key=lambda x: x.fitness) if population else None
+        # 最优策略 - 优先从有效策略中选择，否则从种群中选择有交易的个体
+        best_individual = None
+        if valid_strategies:
+            best_individual = max(valid_strategies, key=lambda x: x.fitness)
+        elif population:
+            # 从种群中选择有交易记录的个体
+            individuals_with_trades = [
+                ind for ind in population
+                if ind.backtest_results and any(
+                    isinstance(r, dict) and len(r.get("trades", [])) > 0
+                    for r in ind.backtest_results.values()
+                )
+            ]
+            if individuals_with_trades:
+                best_individual = max(individuals_with_trades, key=lambda x: x.fitness)
+            else:
+                best_individual = max(population, key=lambda x: x.fitness)
 
         # 演化历史数据 - 确保数据正确提取
         generations = []
@@ -208,13 +223,19 @@ class HtmlReportGenerator:
             trades_by_period = {}
             period_info = {}
             if best_individual.backtest_results:
+                logger.info(f"best_individual.backtest_results keys: {list(best_individual.backtest_results.keys())}")
                 for period, result in best_individual.backtest_results.items():
                     if isinstance(result, dict):
-                        trades_by_period[period] = result.get("trades", [])
+                        trades = result.get("trades", [])
+                        trades_by_period[period] = trades
                         period_info[period] = result.get("period_info", {})
+                        logger.info(f"Period {period}: {len(trades)} trades")
+            else:
+                logger.warning("best_individual.backtest_results is empty!")
 
             best_individual_detail["trades_by_period"] = trades_by_period
             best_individual_detail["period_info"] = period_info
+            logger.info(f"trades_by_period total: {sum(len(t) for t in trades_by_period.values())} trades")
 
         # 准备基准对比数据
         benchmark_comparison = {}

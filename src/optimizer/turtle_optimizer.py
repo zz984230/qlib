@@ -186,7 +186,34 @@ class TurtleGeneticOptimizer:
 
         # 5. 生成最终报告
         logger.info("生成最终报告...")
-        best_individual = self.genetic_engine.get_best_individual(population)
+
+        # 从已评估的有效策略中找最优，或者从种群中选择有交易的个体
+        logger.info(f"有效策略数量: {len(self.valid_strategies_found)}")
+        if self.valid_strategies_found:
+            best_individual = max(self.valid_strategies_found, key=lambda x: x.fitness)
+            logger.info(f"从有效策略中选择最优个体，适应度={best_individual.fitness:.4f}")
+            logger.info(f"backtest_results keys: {list(best_individual.backtest_results.keys()) if best_individual.backtest_results else 'empty'}")
+        else:
+            # 如果没有有效策略，从种群中选择有交易记录的个体
+            individuals_with_trades = [
+                ind for ind in population
+                if ind.backtest_results and any(
+                    isinstance(r, dict) and len(r.get("trades", [])) > 0
+                    for r in ind.backtest_results.values()
+                )
+            ]
+
+            if individuals_with_trades:
+                best_individual = max(individuals_with_trades, key=lambda x: x.fitness)
+                logger.info(f"从有交易的个体中选择最优个体，适应度={best_individual.fitness:.4f}")
+            else:
+                # 如果没有交易记录，重新评估种群的最优个体
+                best_individual = self.genetic_engine.get_best_individual(population)
+                if best_individual.fitness == 0 or not best_individual.backtest_results:
+                    logger.info("重新评估最优个体...")
+                    best_individual.fitness = self._evaluate_individual(best_individual)
+                logger.info(f"从种群中选择最优个体，适应度={best_individual.fitness:.4f}")
+            logger.info(f"backtest_results keys: {list(best_individual.backtest_results.keys()) if best_individual.backtest_results else 'empty'}")
 
         report_path = self._generate_final_report(
             generation,
@@ -271,6 +298,11 @@ class TurtleGeneticOptimizer:
                     # 策略净值序列（已转换为字符串日期 -> 净值的 dict）
                     "strategy_series": strategy_dict,
                 }
+
+                # 调试日志
+                trades_list = getattr(result, 'trades_list', [])
+                if trades_list:
+                    logger.info(f"  Period {period}: {len(trades_list)} trades recorded")
 
             # 计算适应度
             fitness = self.fitness_evaluator.evaluate_backtest_based(

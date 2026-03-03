@@ -84,14 +84,13 @@ class GeneticEngine:
 
             factor_weights = dict(zip(selected_factors, weights))
 
-            # 随机生成阈值
+            # 随机生成阈值（确保 signal_threshold > exit_threshold）
+            # 入场阈值范围: 0.3-0.7（避免过高导致无信号）
+            # 出场阈值范围: 0.2-0.5（确保低于入场阈值）
+            exit_threshold = self.random.uniform(0.2, 0.5)
             signal_threshold = self.random.uniform(
-                self.config.min_signal_threshold,
-                self.config.max_signal_threshold
-            )
-            exit_threshold = self.random.uniform(
-                self.config.min_exit_threshold,
-                self.config.max_exit_threshold
+                max(0.3, exit_threshold + 0.1),  # 确保高于出场阈值
+                0.7
             )
 
             # 随机生成 ATR 周期

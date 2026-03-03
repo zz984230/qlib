@@ -170,18 +170,27 @@ class TurtleBacktestRunner:
             should_exit, exit_type = self._check_stop_loss_fast(position, current_price, current_atr)
             if should_exit:
                 self._close_position(position, current_price, current_date, f"止损 ({exit_type})")
+                position = None  # 重置持仓引用
 
-        # 2. 检查出场信号
+        # 2. 检查出场信号（重新获取持仓状态）
+        if position is None:
+            position = self.portfolio.get_position(self.symbol)
         if position:
             if self.signal_generator.should_exit(idx=bar_index):
                 self._close_position(position, current_price, current_date, "信号出场")
+                position = None  # 重置持仓引用
 
-        # 3. 检查入场信号
+        # 3. 检查入场信号（重新获取持仓状态）
+        if position is None:
+            position = self.portfolio.get_position(self.symbol)
         if not position:
             if self.signal_generator.should_enter(idx=bar_index):
                 self._open_position_fast(bar_index, current_date)
+                position = self.portfolio.get_position(self.symbol)  # 获取新持仓
 
         # 4. 检查加仓
+        if position is None:
+            position = self.portfolio.get_position(self.symbol)
         if position:
             current_atr = self._atr_cache[bar_index] if self._atr_cache is not None else 0.0
             units_to_add = self.position_manager.get_pyramid_positions(
@@ -191,6 +200,8 @@ class TurtleBacktestRunner:
                 self._add_to_position_fast(position, bar_index, current_date, units_to_add)
 
         # 5. 更新持仓最高价
+        if position is None:
+            position = self.portfolio.get_position(self.symbol)
         if position:
             self.position_manager.update_position(position, current_price)
 
