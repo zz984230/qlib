@@ -80,18 +80,21 @@ class TurtlePositionManager:
 
         return float(atr.iloc[-1]) if len(atr) > 0 else 0.0
 
-    def calculate_unit_size(self, price: float, atr: float) -> int:
+    def calculate_unit_size(self, price: float, atr: float, min_shares: int = 100) -> int:
         """计算一个单位（Unit）的股数
 
         海龟公式：1 单位 = 账户风险 / ATR
         其中账户风险 = 账户 * risk_per_unit（默认 1%）
 
+        注意：A股最小交易单位为1手（100股），返回值会被调整为100的整数倍。
+
         Args:
             price: 当前价格
             atr: 当前 ATR 值
+            min_shares: 最小交易单位（A股默认100股=1手）
 
         Returns:
-            单位股数（整数）
+            单位股数（整数，100的整数倍）
         """
         if atr <= 0:
             return 0
@@ -99,6 +102,14 @@ class TurtlePositionManager:
         risk_amount = self.account_size * self.risk_per_unit
         unit_value = risk_amount / atr
         unit_shares = int(unit_value / price)
+
+        # 调整为100股的整数倍（A股1手=100股）
+        if unit_shares >= min_shares:
+            # 向下取整到100的倍数
+            unit_shares = (unit_shares // min_shares) * min_shares
+        else:
+            # 小于100股，无法交易
+            return 0
 
         return max(0, unit_shares)
 
@@ -248,20 +259,40 @@ class TurtleRiskManager:
     def calculate_trailing_stop(
         self,
         highest_price: float,
-        atr: float
+        atr: float,
+        entry_price: float = None
     ) -> float:
         """计算移动止损价格
 
         在盈利达到激活条件后，止损价跟随最高价移动。
+        使用渐进式移动止损：盈利越多，止损越紧。
 
         Args:
             highest_price: 持仓期间最高价
             atr: 当前 ATR
+            entry_price: 入场价格（用于计算盈利比例）
 
         Returns:
             移动止损价格
         """
+        # 基础移动止损
         trailing_stop = highest_price - self.trailing_stop_atr * atr
+
+        # 如果提供了入场价格，根据盈利程度调整止损距离
+        if entry_price is not None:
+            profit_pct = (highest_price - entry_price) / entry_price
+
+            # 盈利超过20%时，收紧止损
+            if profit_pct > 0.20:
+                # 使用更紧的止损距离（1.5 ATR）
+                trailing_stop = highest_price - 1.5 * atr
+            # 盈利超过50%时，进一步收紧
+            elif profit_pct > 0.50:
+                trailing_stop = highest_price - 1.0 * atr
+            # 盈利超过100%时，使用最紧止损
+            elif profit_pct > 1.00:
+                trailing_stop = highest_price - 0.5 * atr
+
         return trailing_stop
 
     def should_use_trailing_stop(self, position: Position, current_price: float) -> bool:
@@ -301,7 +332,8 @@ class TurtleRiskManager:
         if self.should_use_trailing_stop(position, current_price):
             stop_loss = self.calculate_trailing_stop(
                 position.highest_price,
-                current_atr
+                current_atr,
+                position.entry_price  # 传递入场价格用于渐进式止损
             )
             stop_type = "trailing"
         else:

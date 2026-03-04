@@ -82,7 +82,7 @@ class StrategyPool:
         # 生成策略ID
         strategy_id = f"strategy_{uuid.uuid4().hex[:8]}"
 
-        # 构建策略数据
+        # 构建策略数据（包含所有 Individual 字段）
         strategy_data = {
             "id": strategy_id,
             "symbol": symbol,
@@ -94,8 +94,14 @@ class StrategyPool:
             "stop_loss_atr": individual.stop_loss_atr,
             "pyramid_interval_atr": individual.pyramid_interval_atr,
             "max_pyramid_units": individual.max_pyramid_units,
+            "trailing_stop_trigger": individual.trailing_stop_trigger,
+            "min_adx": individual.min_adx,
+            "min_trend_periods": individual.min_trend_periods,
+            "use_trend_filter": individual.use_trend_filter,
             "backtest_results": backtest_results,
             "fitness": individual.fitness,
+            "market_performance": getattr(individual, "market_performance", {}),
+            "optimal_market": getattr(individual, "optimal_market", None),
             "generation": individual.generation,
             "parent_ids": [str(pid) for pid in individual.parent_ids],
             "metadata": metadata or {},
@@ -352,6 +358,116 @@ class StrategyPool:
             "best_fitness": max(fitness_values) if fitness_values else 0,
             "avg_fitness": sum(fitness_values) / len(fitness_values) if fitness_values else 0,
         }
+
+    def load_seed_individuals(self, symbol: str, top_n: int = 10) -> list[Individual]:
+        """加载种子个体（用于增量进化）
+
+        从策略池中加载指定股票的最优策略，转换为 Individual 对象。
+
+        Args:
+            symbol: 股票代码
+            top_n: 加载数量
+
+        Returns:
+            Individual 对象列表
+        """
+        strategies = self.get_best(symbol, top_n=top_n, sort_by="fitness")
+
+        seed_individuals = []
+        for strategy in strategies:
+            try:
+                # 从策略数据创建 Individual 对象
+                individual = Individual.from_dict(strategy)
+                seed_individuals.append(individual)
+            except Exception as e:
+                logger.warning(f"加载种子个体失败 {strategy.get('id')}: {e}")
+
+        logger.info(f"从策略池加载了 {len(seed_individuals)} 个种子个体")
+        return seed_individuals
+
+    def cleanup_strategies(
+        self,
+        symbol: str | None = None,
+        min_fitness: float | None = None,
+        max_age_days: int | None = None,
+        max_count_per_symbol: int | None = None
+    ) -> int:
+        """清理策略池（淘汰失效策略）
+
+        Args:
+            symbol: 股票代码，None 表示所有股票
+            min_fitness: 最低适应度，低于此值的策略将被删除
+            max_age_days: 最大保留天数，超过此天数的策略将被删除
+            max_count_per_symbol: 每个股票最多保留策略数量
+
+        Returns:
+            删除的策略数量
+        """
+        from datetime import timedelta
+
+        strategies = self.list_all() if symbol is None else self.list_by_symbol(symbol)
+
+        if not strategies:
+            return 0
+
+        cutoff_time = None
+        if max_age_days is not None:
+            cutoff_time = datetime.now() - timedelta(days=max_age_days)
+
+        to_remove = []
+        symbol_counts = {}  # 每个股票的策略计数
+
+        for strategy in strategies:
+            strategy_id = strategy.get("id")
+            strategy_symbol = strategy.get("symbol")
+            strategy_timestamp = strategy.get("timestamp")
+            strategy_fitness = strategy.get("fitness", 0)
+
+            # 检查适应度阈值
+            if min_fitness is not None and strategy_fitness < min_fitness:
+                to_remove.append(strategy_id)
+                continue
+
+            # 检查时间阈值
+            if cutoff_time is not None and strategy_timestamp:
+                try:
+                    strategy_time = datetime.fromisoformat(strategy_timestamp)
+                    if strategy_time < cutoff_time:
+                        to_remove.append(strategy_id)
+                        continue
+                except:
+                    pass
+
+            # 检查每个股票的最大策略数量
+            if max_count_per_symbol is not None:
+                if strategy_symbol not in symbol_counts:
+                    symbol_counts[strategy_symbol] = 0
+                symbol_counts[strategy_symbol] += 1
+
+        # 处理按数量淘汰（保留适应度最高的）
+        if max_count_per_symbol is not None:
+            for sym, count in symbol_counts.items():
+                if count > max_count_per_symbol:
+                    # 获取该股票的所有策略，按适应度排序
+                    sym_strategies = [
+                        s for s in strategies
+                        if s.get("symbol") == sym and s.get("id") not in to_remove
+                    ]
+                    sym_strategies.sort(key=lambda x: x.get("fitness", 0), reverse=True)
+
+                    # 标记超过数量的策略为删除
+                    for strategy in sym_strategies[max_count_per_symbol:]:
+                        to_remove.append(strategy.get("id"))
+
+        # 执行删除
+        removed_count = 0
+        for strategy_id in to_remove:
+            if self.remove(strategy_id):
+                removed_count += 1
+
+        logger.info(f"清理策略池完成，删除了 {removed_count} 个策略")
+
+        return removed_count
 
     def to_dataframe(self) -> "pd.DataFrame":
         """将策略池转换为 DataFrame

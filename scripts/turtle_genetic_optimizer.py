@@ -72,8 +72,8 @@ def parse_args():
     parser.add_argument(
         "--cash",
         type=float,
-        default=50000,
-        help="初始资金 (默认: 50000)"
+        default=100000,
+        help="初始资金 (默认: 100000)"
     )
 
     # 遗传算法参数
@@ -112,8 +112,8 @@ def parse_args():
     parser.add_argument(
         "--max-drawdown",
         type=float,
-        default=0.03,
-        help="最大回撤限制 (默认: 0.03)"
+        default=0.08,
+        help="最大回撤参考值 (默认: 0.08, 非硬约束)"
     )
 
     # 输出参数

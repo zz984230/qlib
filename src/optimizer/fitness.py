@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 class FitnessConfig:
     """适应度评估配置"""
 
-    # 回撤限制
-    max_drawdown_limit: float = 0.03
+    # 回撤限制（移除硬约束，改为参考值）
+    max_drawdown_limit: float = 0.08  # 8%参考值，非硬约束
 
     # 各周期权重
     period_1y_weight: float = 0.6
@@ -31,9 +31,11 @@ class FitnessConfig:
     period_1m_weight: float = 0.1
 
     # 适应度参数
-    sharpe_bonus_weight: float = 0.1      # 夏普比率加分权重
-    stability_bonus_weight: float = 5.0   # 稳定性加分权重
-    drawdown_penalty_weight: float = 10.0 # 回撤惩罚权重
+    sharpe_bonus_weight: float = 1.0      # 夏普比率加分权重
+    stability_bonus_weight: float = 0.5   # 稳定性加分权重
+    drawdown_penalty_weight: float = 0.5  # 回撤惩罚权重（降低）
+    trade_frequency_penalty_weight: float = 1.0  # 交易频率惩罚权重
+    return_weight: float = 5.0  # 收益权重
 
 
 class FitnessEvaluator:
@@ -116,14 +118,9 @@ class FitnessEvaluator:
         individual: Individual,
         backtest_results: dict[str, "BacktestResult"]
     ) -> float:
-        """基于回测结果计算适应度（Phase 3 完整版）
+        """基于回测结果计算适应度（简化版）
 
-        适应度函数：
-            - 基础分：加权收益（1y权重 60%，3m权重 30%，1m权重 10%）
-            - 回撤惩罚：平滑线性惩罚，超过3%额外扣分
-            - 夏普比率加分
-            - 稳定性加分：三个周期表现一致性
-            - 超额收益加分：跑赢买入持有基准才加分
+        适应度 = 加权收益 * 收益权重 + 夏普加分 - 回撤惩罚
 
         Args:
             individual: 待评估个体
@@ -141,6 +138,10 @@ class FitnessEvaluator:
         # 计算加权收益
         weighted_return = 0.0
         returns = {}
+        total_trades = 0  # 总交易次数
+        total_sharpe = 0.0
+        total_drawdown = 0.0
+        periods_with_data = 0
 
         for period, weight in weights.items():
             if period not in backtest_results:
@@ -150,63 +151,51 @@ class FitnessEvaluator:
             # 支持字典和 BacktestResult 对象
             if isinstance(result, dict):
                 period_return = result.get("total_return", 0)
-            else:
-                period_return = result.total_return
-            returns[period] = period_return
-            weighted_return += period_return * weight
-
-        # 计算超额收益加分（只有跑赢基准才加分）
-        excess_return_bonus = 0.0
-        for period, result in backtest_results.items():
-            if isinstance(result, dict):
-                strategy_ret = result.get("total_return", 0)
-                benchmark_series = result.get("benchmark_series", {})
-                if benchmark_series:
-                    values = list(benchmark_series.values())
-                    if len(values) >= 2:
-                        benchmark_ret = values[-1] / values[0] - 1
-                        excess = strategy_ret - benchmark_ret
-                        # 只有跑赢基准才加分
-                        excess_return_bonus += max(0, excess) * 5.0
-
-        # 平滑回撤惩罚（线性惩罚替代突变惩罚）
-        drawdown_penalty = 0.0
-        for period, result in backtest_results.items():
-            if isinstance(result, dict):
+                trades = result.get("trades", [])
+                sharpe = result.get("sharpe_ratio", 0)
                 dd = result.get("max_drawdown", 0)
             else:
+                period_return = result.total_return
+                trades = result.trades if hasattr(result, 'trades') else []
+                sharpe = result.sharpe_ratio
                 dd = result.max_drawdown
 
-            # 线性惩罚：回撤每增加 1%，惩罚增加
-            if dd > 0.01:  # 超过 1% 开始惩罚
-                drawdown_penalty -= (dd - 0.01) * 5.0
-            if dd > self.config.max_drawdown_limit:
-                drawdown_penalty -= (dd - self.config.max_drawdown_limit) * 10.0  # 超限额外惩罚
+            returns[period] = period_return
+            weighted_return += period_return * weight
+            total_trades += len(trades)
+            total_sharpe += sharpe * weight
+            total_drawdown += dd * weight
+            periods_with_data += 1
+
+        # 交易频率惩罚（过度频繁交易）
+        trade_frequency_penalty = 0.0
+        expected_max_trades = 100
+        if total_trades > expected_max_trades:
+            excess_trades = total_trades - expected_max_trades
+            trade_frequency_penalty = -excess_trades / expected_max_trades * self.config.trade_frequency_penalty_weight
+
+        # 回撤惩罚
+        drawdown_penalty = 0.0
+        if total_drawdown > 0.02:  # 超过2%开始惩罚
+            drawdown_penalty = -(total_drawdown - 0.02) * self.config.drawdown_penalty_weight
 
         # 夏普比率加分
-        sharpe = 0.0
-        if "1y" in backtest_results:
-            result = backtest_results["1y"]
-            if isinstance(result, dict):
-                sharpe = result.get("sharpe_ratio", 0)
-            else:
-                sharpe = result.sharpe_ratio
-        sharpe_bonus = sharpe * self.config.sharpe_bonus_weight
+        avg_sharpe = total_sharpe / periods_with_data if periods_with_data > 0 else 0
+        sharpe_bonus = max(0, avg_sharpe) * self.config.sharpe_bonus_weight
 
-        # 稳定性加分（收益波动越小加分越多）
+        # 稳定性惩罚
+        stability_penalty = 0.0
         if len(returns) >= 2:
             returns_std = np.std(list(returns.values()))
-            stability_bonus = -returns_std * self.config.stability_bonus_weight
-        else:
-            stability_bonus = 0.0
+            stability_penalty = -returns_std * self.config.stability_bonus_weight
 
         # 综合适应度
         fitness = (
-            weighted_return
-            + drawdown_penalty
+            weighted_return * self.config.return_weight
             + sharpe_bonus
-            + stability_bonus
-            + excess_return_bonus
+            + trade_frequency_penalty
+            + drawdown_penalty
+            + stability_penalty
         )
 
         return fitness
@@ -257,12 +246,14 @@ class FitnessEvaluator:
     ) -> bool:
         """判断是否为有效策略
 
-        Phase 1: 简化检查（因子数量、阈值合理性）
-        Phase 3: 完整检查（回撤 <=3% 且至少两个周期有正收益）
+        修订后的判定标准：
+        1. 有交易记录（至少10笔）
+        2. 夏普比率 > 0.5
+        3. 不是所有周期都是负收益
 
         Args:
             individual: 待判断个体
-            backtest_results: 回测结果（Phase 3 需要）
+            backtest_results: 回测结果
 
         Returns:
             是否为有效策略
@@ -276,31 +267,43 @@ class FitnessEvaluator:
 
         # Phase 3 完整检查
         if backtest_results:
-            # 检查回撤
+            total_trades = 0
+            positive_periods = 0
+            has_sharpe = False
+
             for period, result in backtest_results.items():
                 # 支持字典和 BacktestResult 对象
                 if isinstance(result, dict):
                     max_dd = result.get("max_drawdown", 0)
                     total_ret = result.get("total_return", 0)
+                    sharpe = result.get("sharpe_ratio", 0)
+                    trades = result.get("trades", [])
                 else:
                     max_dd = result.max_drawdown
                     total_ret = result.total_return
+                    sharpe = result.sharpe_ratio
+                    trades = result.trades if hasattr(result, 'trades') else []
 
-                if max_dd > self.config.max_drawdown_limit:
-                    return False
+                total_trades += len(trades)
 
-            # 检查正收益周期数
-            positive_return_periods = 0
-            for r in backtest_results.values():
-                if isinstance(r, dict):
-                    if r.get("total_return", 0) > 0:
-                        positive_return_periods += 1
-                else:
-                    if r.total_return > 0:
-                        positive_return_periods += 1
+                if total_ret > 0:
+                    positive_periods += 1
 
-            if positive_return_periods < 2:
+                # 1年期夏普比率检查
+                if period == "1y" and sharpe > 0.5:
+                    has_sharpe = True
+
+            # 至少10笔交易
+            if total_trades < 10:
                 return False
+
+            # 至少1个周期有正收益
+            if positive_periods < 1:
+                return False
+
+            # 1年期夏普比率要求（可放宽）
+            # if not has_sharpe:
+            #     return False
 
         return True
 

@@ -10,6 +10,8 @@ import numpy as np
 from numpy.random import Generator, PCG64
 
 from src.optimizer.individual import Individual, get_factor_names
+from src.optimizer.tagged_factors import get_factor_selection_bias
+from src.optimizer.parameter_adapter import ParameterAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +31,9 @@ class GeneticConfig:
 
     # 基因范围约束
     min_signal_threshold: float = 0.0
-    max_signal_threshold: float = 1.0
+    max_signal_threshold: float = 0.3  # 降低最大信号阈值
     min_exit_threshold: float = 0.0
-    max_exit_threshold: float = 1.0
+    max_exit_threshold: float = 0.3  # 降低最大出场阈值
     min_atr_period: int = 5
     max_atr_period: int = 50
 
@@ -58,25 +60,103 @@ class GeneticEngine:
         self.avg_fitness_history: list[float] = []
         self.generation_stats: list[dict] = []
 
-    def initialize_population(self, generation: int = 0) -> list[Individual]:
+    def initialize_population(
+        self,
+        generation: int = 0,
+        seed_individuals: list[Individual] | None = None,
+        seed_ratio: float = 0.2,
+        market_state: str | None = None
+    ) -> list[Individual]:
         """初始化种群
 
         使用随机方式生成初始个体，确保多样性。
+        支持种子注入，从历史策略池继承优秀基因。
+        支持市场状态感知的因子选择偏向。
 
         Args:
             generation: 初始代数（通常为0）
+            seed_individuals: 种子个体列表（来自历史策略池）
+            seed_ratio: 种子占种群比例（默认20%）
+            market_state: 当前市场状态（用于因子选择偏向）
 
         Returns:
             初始种群列表
         """
         population = []
 
-        for i in range(self.config.population_size):
-            # 随机选择 3-8 个因子
-            n_factors = self.random.integers(3, min(9, len(self.factor_names) + 1))
-            selected_factors = self.random.choice(
-                self.factor_names, size=n_factors, replace=False
+        # 计算种子数量
+        n_seeds = 0
+        if seed_individuals:
+            n_seeds = min(
+                len(seed_individuals),
+                int(self.config.population_size * seed_ratio)
             )
+
+        # 注入种子个体
+        if n_seeds > 0:
+            # 选择适应度最高的种子
+            sorted_seeds = sorted(seed_individuals, key=lambda x: x.fitness, reverse=True)
+            for seed in sorted_seeds[:n_seeds]:
+                # 复制种子并重置代数
+                seed_copy = Individual(
+                    factor_weights=seed.factor_weights.copy(),
+                    signal_threshold=seed.signal_threshold,
+                    exit_threshold=seed.exit_threshold,
+                    atr_period=seed.atr_period,
+                    stop_loss_atr=seed.stop_loss_atr,
+                    pyramid_interval_atr=seed.pyramid_interval_atr,
+                    trailing_stop_trigger=seed.trailing_stop_trigger,
+                    generation=generation,
+                    parent_ids=[seed.id if hasattr(seed, 'id') else ''],
+                )
+                population.append(seed_copy)
+            logger.info(f"注入 {n_seeds} 个种子个体到初始种群")
+
+        # 随机生成剩余个体
+        n_random = self.config.population_size - len(population)
+
+        # 获取市场状态对应的参数范围
+        adapter = ParameterAdapter()
+        if market_state:
+            params = adapter.get_parameters(market_state)
+            min_sig, max_sig = params.signal_threshold
+            min_exit, max_exit = params.exit_threshold
+            min_stop, max_stop = params.stop_loss_atr
+            min_trail, max_trail = params.trailing_stop_trigger
+            min_factors, max_factors = params.factor_count_range
+        else:
+            # 默认范围
+            min_sig, max_sig = 0.05, 0.25
+            min_exit, max_exit = 0.0, 0.2
+            min_stop, max_stop = 1.5, 2.5
+            min_trail, max_trail = 0.5, 1.5
+            min_factors, max_factors = 1, 5
+
+        # 获取因子选择偏向（基于市场状态）
+        factor_bias = None
+        if market_state:
+            factor_bias = get_factor_selection_bias(self.factor_names, market_state)
+
+        for i in range(n_random):
+            # 根据市场状态确定因子数量范围
+            n_factors = self.random.integers(min_factors, min(max_factors + 1, len(self.factor_names) + 1))
+
+            # 根据市场状态偏向选择因子
+            if factor_bias is not None:
+                # 使用加权随机选择
+                factor_names_array = np.array(list(factor_bias.keys()))
+                factor_weights = np.array(list(factor_bias.values()))
+                selected_factors = self.random.choice(
+                    factor_names_array,
+                    size=min(n_factors, len(factor_names_array)),
+                    replace=False,
+                    p=factor_weights / factor_weights.sum()
+                )
+            else:
+                # 均匀随机选择
+                selected_factors = self.random.choice(
+                    self.factor_names, size=n_factors, replace=False
+                )
 
             # 随机生成因子权重
             raw_weights = self.random.random(n_factors)
@@ -84,13 +164,11 @@ class GeneticEngine:
 
             factor_weights = dict(zip(selected_factors, weights))
 
-            # 随机生成阈值（确保 signal_threshold > exit_threshold）
-            # 入场阈值范围: 0.3-0.7（避免过高导致无信号）
-            # 出场阈值范围: 0.2-0.5（确保低于入场阈值）
-            exit_threshold = self.random.uniform(0.2, 0.5)
+            # 随机生成阈值（使用市场状态对应的范围）
+            exit_threshold = self.random.uniform(min_exit, max_exit)
             signal_threshold = self.random.uniform(
-                max(0.3, exit_threshold + 0.1),  # 确保高于出场阈值
-                0.7
+                max(min_sig, exit_threshold + 0.02),  # 确保高于出场阈值
+                max_sig
             )
 
             # 随机生成 ATR 周期
@@ -99,18 +177,28 @@ class GeneticEngine:
                 self.config.max_atr_period + 1
             )
 
+            # 随机生成止损参数（使用市场状态对应的范围）
+            stop_loss_atr = self.random.uniform(min_stop, max_stop)
+            trailing_stop_trigger = self.random.uniform(min_trail, max_trail)
+
+            # 随机生成 ADX 趋势强度阈值 (0-20，进一步放宽限制)
+            min_adx = self.random.uniform(0.0, 20.0)
+
             individual = Individual(
                 factor_weights=factor_weights,
                 signal_threshold=signal_threshold,
                 exit_threshold=exit_threshold,
                 atr_period=atr_period,
+                stop_loss_atr=stop_loss_atr,
+                trailing_stop_trigger=trailing_stop_trigger,
+                min_adx=min_adx,
                 generation=generation,
                 parent_ids=[],
             )
 
             population.append(individual)
 
-        logger.info(f"初始化种群: {len(population)} 个个体")
+        logger.info(f"初始化种群: {len(population)} 个个体 (种子: {n_seeds}, 随机: {n_random})")
         return population
 
     def evolve(

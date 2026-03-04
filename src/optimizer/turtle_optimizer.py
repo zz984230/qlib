@@ -15,6 +15,11 @@ from src.optimizer.strategy_pool import StrategyPool
 from src.backtest.multi_period import MultiPeriodBacktester
 from src.data.turtle_data_loader import TurtleDataLoader
 from src.report.html_generator import HtmlReportGenerator
+
+# 新增：市场状态和参数适配
+from src.optimizer.market_state import MarketStateManager
+from src.optimizer.parameter_adapter import ParameterAdapter
+from src.optimizer.tagged_factors import calculate_tag_weights
 from src.optimizer.interaction import (
     confirm_continue,
     display_strategy_summary,
@@ -85,10 +90,15 @@ class TurtleGeneticOptimizer:
         self.report_generator = HtmlReportGenerator()
         self.data_loader = TurtleDataLoader()
 
+        # 新增：市场状态管理和参数适配
+        self.market_state_manager = MarketStateManager()
+        self.parameter_adapter = ParameterAdapter()
+
         # 演化历史
         self.evolution_history = []
         self.valid_strategies_found = []
         self.data = None
+        self.current_market_state = None  # 当前市场状态
 
     def run(self, start_date: Optional[str] = None) -> dict:
         """执行优化主流程
@@ -116,11 +126,33 @@ class TurtleGeneticOptimizer:
 
         logger.info(f"数据加载完成: {len(self.data)} 条")
 
-        # 3. 初始化种群
-        logger.info("初始化种群...")
-        population = self.genetic_engine.initialize_population()
+        # 2.5. 识别当前市场状态（新增）
+        self.current_market_state = self.market_state_manager.get_market_state(
+            self.symbol, self.data
+        )
+        logger.info(f"当前市场状态: {self.current_market_state}")
+        logger.info(
+            f"风险配置: {self.parameter_adapter.get_risk_description(self.current_market_state)}"
+        )
 
-        # 4. 开始演化
+        # 3. 加载种子个体（增量进化）
+        seed_individuals = []
+        try:
+            seed_individuals = self.strategy_pool.load_seed_individuals(self.symbol, top_n=10)
+            logger.info(f"从策略池加载了 {len(seed_individuals)} 个种子个体用于增量进化")
+        except Exception as e:
+            logger.info(f"无法从策略池加载种子个体: {e}，将使用随机初始化")
+
+        # 4. 初始化种群（带市场状态感知，新增）
+        logger.info("初始化种群...")
+        population = self.genetic_engine.initialize_population(
+            generation=0,
+            seed_individuals=seed_individuals if seed_individuals else None,
+            seed_ratio=0.2,  # 20%的种群来自种子个体
+            market_state=self.current_market_state  # 使用市场状态引导因子选择
+        )
+
+        # 5. 开始演化
         generation = 0
         should_continue = True
 
@@ -221,7 +253,16 @@ class TurtleGeneticOptimizer:
             self.valid_strategies_found,
         )
 
-        # 6. 显示最终摘要
+        # 6. 清理策略池（淘汰失效策略）
+        logger.info("清理策略池...")
+        removed = self.strategy_pool.cleanup_strategies(
+            symbol=self.symbol,
+            min_fitness=-5.0,  # 淘汰适应度低于-5的策略
+            max_count_per_symbol=50  # 每个股票最多保留50个策略
+        )
+        logger.info(f"已淘汰 {removed} 个失效策略")
+
+        # 7. 显示最终摘要
         if self.interactive:
             display_final_report(
                 generation,
@@ -358,7 +399,10 @@ class TurtleGeneticOptimizer:
                 individual,
                 self.symbol,
                 individual.backtest_results,
-                {"generation": generation}
+                {
+                    "generation": generation,
+                    "market_state": self.current_market_state,  # 记录发现策略时的市场状态
+                }
             )
             strategy_ids.append(strategy_id)
             logger.info(
@@ -392,7 +436,10 @@ class TurtleGeneticOptimizer:
                 individual,
                 self.symbol,
                 individual.backtest_results,
-                {"generation": generation}
+                {
+                    "generation": generation,
+                    "market_state": self.current_market_state,  # 记录发现策略时的市场状态
+                }
             )
             strategy_ids.append(strategy_id)
 

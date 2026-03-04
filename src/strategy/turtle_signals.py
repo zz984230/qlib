@@ -2,7 +2,7 @@
 
 使用因子组合生成入场和出场信号，与遗传算法的 Individual 基因编码对接。
 
-优化版本：使用指标预计算缓存
+优化版本：使用指标预计算缓存 + 市场环境识别
 """
 
 import logging
@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from src.optimizer.individual import Individual, FACTOR_POOL
+from src.strategy.market_environment import MarketEnvironment
 
 if TYPE_CHECKING:
     pass
@@ -212,6 +213,7 @@ class IndicatorCache:
         Args:
             data: OHLCV 数据
         """
+        self.open = data["open"].values.astype(np.float64) if "open" in data.columns else None
         self.close = data["close"].values.astype(np.float64)
         self.high = data["high"].values.astype(np.float64)
         self.low = data["low"].values.astype(np.float64)
@@ -270,6 +272,13 @@ class IndicatorCache:
         """获取指定位置的 ATR 值"""
         atr = self._cache["atr14"]
         val = atr[idx]
+        return float(val) if not np.isnan(val) else 0.0
+
+    def _get_open(self, idx: int = -1) -> float:
+        """获取指定位置的 Open 值"""
+        if self.open is None:
+            return 0.0
+        val = self.open[idx]
         return float(val) if not np.isnan(val) else 0.0
 
 
@@ -410,9 +419,48 @@ class TurtleSignalGenerator:
             return float(np.clip(exit_strength, 0, 1))
 
     def should_enter(self, data: pd.DataFrame | None = None, idx: int = -1) -> bool:
-        """判断是否应该入场"""
+        """判断是否应该入场
+
+        综合考虑：
+        1. 因子信号强度
+        2. ADX趋势强度过滤（可选，默认禁用）
+        3. 市场环境识别（可选，默认禁用）
+
+        注意：市场环境识别和ADX过滤器默认已禁用，以增加交易机会。
+        """
         entry_signal = self.generate_entry_signal(data, idx)
-        return entry_signal >= self.signal_threshold
+
+        # 基础信号检查
+        if entry_signal < self.signal_threshold:
+            return False
+
+        # 趋势过滤器（默认禁用，可通过 use_trend_filter=True 启用）
+        if self.individual.use_trend_filter:
+            # ADX 趋势强度过滤器
+            if self.indicator_cache is not None:
+                adx_values = self.indicator_cache.get("adx14")
+                if adx_values is not None and idx < len(adx_values):
+                    current_adx = float(adx_values[idx])
+                    if current_adx < self.individual.min_adx:
+                        # ADX 趋势强度不足，不入场
+                        return False
+
+            # 市场环境识别（只在趋势市入场）
+            if self.indicator_cache is not None and idx >= 50:
+                # 获取最近50天的价格
+                prices = self.indicator_cache.close[max(0, idx-49):idx+1]
+                adx = self.indicator_cache.get("adx14")
+                adx_series = adx[max(0, idx-49):idx+1] if adx is not None else None
+
+                # 分析市场环境
+                env_analyzer = MarketEnvironment(lookback=50)
+                env_analysis = env_analyzer.analyze(prices, adx_series)
+
+                # 只在趋势市入场
+                if not env_analysis["is_trending"]:
+                    return False
+
+        return True
 
     def should_exit(self, data: pd.DataFrame | None = None, idx: int = -1) -> bool:
         """判断是否应该出场"""
@@ -609,6 +657,65 @@ class TurtleSignalGenerator:
                         if high[i] > np.max(high[start:i]):
                             count += 1
                     return float(count / 5)
+                return 0.0
+
+            # ========== 价格行为因子 (右侧交易) ==========
+            elif factor_name == "new_high_count":
+                # 过去10日创新高次数
+                if idx >= 10:
+                    count = 0
+                    for i in range(idx-9, idx+1):
+                        start = max(0, i-10)
+                        if close[i] > np.max(close[start:i]):
+                            count += 1
+                    return float(count / 10)
+                return 0.0
+
+            elif factor_name == "new_low_count":
+                # 过去10日创新低次数
+                if idx >= 10:
+                    count = 0
+                    for i in range(idx-9, idx+1):
+                        start = max(0, i-10)
+                        if close[i] < np.min(close[start:i]):
+                            count += 1
+                    return float(count / 10)
+                return 0.0
+
+            elif factor_name == "consecutive_up":
+                # 连续阳线天数 (归一化到0-1)
+                if idx >= 1:
+                    count = 0
+                    for i in range(idx, max(-1, idx-10), -1):
+                        if close[i] > close[i-1]:
+                            count += 1
+                        else:
+                            break
+                    return float(count / 10)
+                return 0.0
+
+            elif factor_name == "consecutive_down":
+                # 连续阴线天数 (归一化到0-1)
+                if idx >= 1:
+                    count = 0
+                    for i in range(idx, max(-1, idx-10), -1):
+                        if close[i] < close[i-1]:
+                            count += 1
+                        else:
+                            break
+                    return float(count / 10)
+                return 0.0
+
+            elif factor_name == "gap_up":
+                # 向上跳空: open > prev_high
+                if idx >= 1:
+                    return float(1.0 if cache._get_open(idx) > high[idx-1] else 0.0)
+                return 0.0
+
+            elif factor_name == "gap_down":
+                # 向下跳空: open < prev_low
+                if idx >= 1:
+                    return float(1.0 if cache._get_open(idx) < low[idx-1] else 0.0)
                 return 0.0
 
             else:
@@ -815,6 +922,60 @@ class TurtleSignalGenerator:
                         count += 1
                 return float(count / period)
 
+            elif factor_name == "new_high_count":
+                # 过去10日创新高次数
+                if len(close) >= 11:
+                    count = 0
+                    for i in range(-10, 0):
+                        if close[i] > np.max(close[max(0, i-10):i]):
+                            count += 1
+                    return float(count / 10)
+                return 0.0
+
+            elif factor_name == "new_low_count":
+                # 过去10日创新低次数
+                if len(close) >= 11:
+                    count = 0
+                    for i in range(-10, 0):
+                        if close[i] < np.min(close[max(0, i-10):i]):
+                            count += 1
+                    return float(count / 10)
+                return 0.0
+
+            elif factor_name == "consecutive_up":
+                # 连续阳线天数(归一化到0-1)
+                if len(close) >= 2:
+                    count = 0
+                    for i in range(-1, -len(close)-1, -1):
+                        if close[i] > close[i-1]:
+                            count += 1
+                        else:
+                            break
+                    return float(count / 10)
+                return 0.0
+            elif factor_name == "consecutive_down":
+                # 连续阴线天数(归一化到0-1)
+                if len(close) >= 2:
+                    count = 0
+                    for i in range(-1, -len(close)-1, -1):
+                        if close[i] < close[i-1]:
+                            count += 1
+                        else:
+                            break
+                    return float(count / 10)
+                return 0.0
+            elif factor_name == "gap_up":
+                # 向上跳空: open > prev_high
+                if len(close) >= 2 and "open" in data.columns:
+                    open = data["open"].values
+                    return float(1.0 if open[-1] > high[-2] else 0.0)
+                return 0.0
+            elif factor_name == "gap_down":
+                # 向下跳空: open < prev_low
+                if len(close) >= 2 and "open" in data.columns:
+                    open = data["open"].values
+                    return float(1.0 if open[-1] < low[-2] else 0.0)
+                return 0.0
             else:
                 logger.warning(f"Unknown factor: {factor_name}")
                 return 0.0
@@ -851,7 +1012,7 @@ class TurtleSignalGenerator:
             return (np.tanh(value * 10) + 1) / 2
         elif factor_name == "vol_adj_return":
             return (np.tanh(value) + 1) / 2
-        elif factor_name in ["trend_consistency", "higher_highs"]:
+        elif factor_name in ["trend_consistency", "higher_highs", "new_high_count", "new_low_count", "consecutive_up", "consecutive_down", "gap_up", "gap_down"]:
             return np.clip(value, 0, 1)
         else:
             return 1 / (1 + np.exp(-value * 10))

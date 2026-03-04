@@ -28,9 +28,18 @@ class Individual:
     max_pyramid_units: int = 4
     trailing_stop_trigger: float = 1.0   # 移动止损触发点 (ATR倍数)，范围 0.5-1.5
 
+    # ========== 趋势过滤参数 ==========
+    min_adx: float = 10.0                # 最低ADX趋势强度阈值 (0-50)，默认10（非常宽松）
+    min_trend_periods: int = 5           # 最少趋势周期数
+    use_trend_filter: bool = False       # 是否启用趋势过滤器（默认禁用）
+
     # ========== 评估结果 ==========
     fitness: float = 0.0
     backtest_results: dict[str, Any] = field(default_factory=dict)
+
+    # ========== 市场适应度（新增） ==========
+    market_performance: dict[str, dict[str, float]] = field(default_factory=dict)  # 各市场状态表现
+    optimal_market: str | None = None  # 最适合的市场状态
 
     # ========== 元数据 ==========
     generation: int = 0            # 所属代数
@@ -58,7 +67,8 @@ class Individual:
                             如果为 None，使用个体自身的因子
 
         Returns:
-            基因数组，格式为 [factor_weights..., signal_threshold, exit_threshold, atr_period]
+            基因数组，格式为 [factor_weights..., signal_threshold, exit_threshold, atr_period,
+                           stop_loss_atr, pyramid_interval_atr, trailing_stop_trigger, min_adx]
         """
         # 使用所有因子名称确保基因长度一致
         if all_factor_names is None:
@@ -77,6 +87,7 @@ class Individual:
             self.stop_loss_atr,
             self.pyramid_interval_atr,
             self.trailing_stop_trigger,
+            self.min_adx,
         ])
 
         return genes
@@ -115,6 +126,7 @@ class Individual:
         stop_loss_atr = float(genes[n_factors + 3]) if n_factors + 3 < len(genes) else 2.0
         pyramid_interval_atr = float(genes[n_factors + 4]) if n_factors + 4 < len(genes) else 0.5
         trailing_stop_trigger = float(genes[n_factors + 5]) if n_factors + 5 < len(genes) else 1.0
+        min_adx = float(genes[n_factors + 6]) if n_factors + 6 < len(genes) else 10.0
 
         return cls(
             factor_weights=factor_weights,
@@ -124,6 +136,7 @@ class Individual:
             stop_loss_atr=max(1.5, min(3.0, stop_loss_atr)),  # 限制范围
             pyramid_interval_atr=max(0.3, min(0.7, pyramid_interval_atr)),  # 限制范围
             trailing_stop_trigger=max(0.5, min(1.5, trailing_stop_trigger)),  # 限制范围
+            min_adx=max(0.0, min(50.0, min_adx)),  # 限制 ADX 范围 [0, 50]
             generation=generation,
             parent_ids=parent_ids or [],
         )
@@ -164,8 +177,13 @@ class Individual:
             "pyramid_interval_atr": self.pyramid_interval_atr,
             "max_pyramid_units": self.max_pyramid_units,
             "trailing_stop_trigger": self.trailing_stop_trigger,
+            "min_adx": self.min_adx,
+            "min_trend_periods": self.min_trend_periods,
+            "use_trend_filter": self.use_trend_filter,
             "fitness": self.fitness,
             "backtest_results": self.backtest_results,
+            "market_performance": self.market_performance,
+            "optimal_market": self.optimal_market,
             "generation": self.generation,
             "parent_ids": self.parent_ids,
         }
@@ -182,8 +200,13 @@ class Individual:
             pyramid_interval_atr=data.get("pyramid_interval_atr", 0.5),
             max_pyramid_units=data.get("max_pyramid_units", 4),
             trailing_stop_trigger=data.get("trailing_stop_trigger", 1.0),
+            min_adx=data.get("min_adx", 10.0),
+            min_trend_periods=data.get("min_trend_periods", 5),
+            use_trend_filter=data.get("use_trend_filter", False),
             fitness=data.get("fitness", 0.0),
             backtest_results=data.get("backtest_results", {}),
+            market_performance=data.get("market_performance", {}),
+            optimal_market=data.get("optimal_market", None),
             generation=data.get("generation", 0),
             parent_ids=data.get("parent_ids", []),
         )
@@ -248,6 +271,14 @@ FACTOR_POOL = {
     # ========== 趋势质量因子 (新增) ==========
     "trend_consistency": "趋势方向一致性",           # 趋势一致性
     "higher_highs": "连续新高计数",                 # 突破强度
+
+    # ========== 价格行为因子 (右侧交易) ==========
+    "new_high_count": "过去N日创新高次数",           # 突破强度
+    "new_low_count": "过去N日创新低次数",            # 跌破强度
+    "consecutive_up": "连续阳线天数",                # 上涨惯性
+    "consecutive_down": "连续阴线天数",              # 下跌惯性
+    "gap_up": "向上跳空 (open > prev_high)",         # 强势信号
+    "gap_down": "向下跳空 (open < prev_low)",        # 弱势信号
 }
 
 
