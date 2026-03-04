@@ -83,13 +83,17 @@ class TurtlePositionManager:
     def calculate_unit_size(self, price: float, atr: float, min_shares: int = 100) -> int:
         """计算一个单位（Unit）的股数
 
-        海龟公式：1 单位 = 账户风险 / ATR
-        其中账户风险 = 账户 * risk_per_unit（默认 1%）
+        海龟公式：1 单位 = 账户 × 1% / ATR（直接得到股数）
+
+        这个公式的含义是：让价格每波动1 ATR时，账户盈亏恰好为1%。
+
+        示例：账户100000，ATR=2.3，则1单位 = 100000 × 1% / 2.3 = 435股
+        当价格波动1 ATR（2.3元）时，盈亏 = 435 × 2.3 = 1000元 = 账户1%
 
         注意：A股最小交易单位为1手（100股），返回值会被调整为100的整数倍。
 
         Args:
-            price: 当前价格
+            price: 当前价格（未使用，保留参数以兼容接口）
             atr: 当前 ATR 值
             min_shares: 最小交易单位（A股默认100股=1手）
 
@@ -99,9 +103,9 @@ class TurtlePositionManager:
         if atr <= 0:
             return 0
 
+        # 海龟原版公式：1单位 = 账户 × 1% / ATR
         risk_amount = self.account_size * self.risk_per_unit
-        unit_value = risk_amount / atr
-        unit_shares = int(unit_value / price)
+        unit_shares = int(risk_amount / atr)
 
         # 调整为100股的整数倍（A股1手=100股）
         if unit_shares >= min_shares:
