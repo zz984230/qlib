@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 import numpy as np
 import json
 
@@ -16,10 +16,13 @@ class Individual:
     基因编码包含因子权重和信号阈值，通过遗传算法演化寻找最优参数组合。
     """
 
+    # ========== 策略类型 ==========
+    strategy_type: Literal["turtle", "mean_reversion"] = "turtle"  # 策略类型
+
     # ========== 基因编码 ==========
-    factor_weights: dict[str, float]  # 因子权重 {"ma": 0.3, "rsi": 0.4, ...}
-    signal_threshold: float           # 入场阈值 (0-1)
-    exit_threshold: float             # 出场阈值 (0-1)
+    factor_weights: dict[str, float] = field(default_factory=dict)  # 因子权重 {"ma": 0.3, "rsi": 0.4, ...}
+    signal_threshold: float = 0.5           # 入场阈值 (0-1)
+    exit_threshold: float = 0.3             # 出场阈值 (0-1)
 
     # ========== 海龟参数 (Phase 2 使用) ==========
     atr_period: int = 20
@@ -169,6 +172,7 @@ class Individual:
     def to_dict(self) -> dict[str, Any]:
         """转换为字典（用于序列化）"""
         return {
+            "strategy_type": self.strategy_type,
             "factor_weights": self.factor_weights,
             "signal_threshold": self.signal_threshold,
             "exit_threshold": self.exit_threshold,
@@ -192,6 +196,7 @@ class Individual:
     def from_dict(cls, data: dict[str, Any]) -> "Individual":
         """从字典创建个体（用于反序列化）"""
         return cls(
+            strategy_type=data.get("strategy_type", "turtle"),
             factor_weights=data.get("factor_weights", {}),
             signal_threshold=data.get("signal_threshold", 0.5),
             exit_threshold=data.get("exit_threshold", 0.3),

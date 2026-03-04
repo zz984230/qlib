@@ -865,12 +865,16 @@
             {% if best_individual.trades_by_period %}
             <div style="margin-top: 32px;">
                 <h3 class="has-tooltip" data-tip="各周期的交易记录详情&#10;包含买入/卖出操作、价格、数量和原因">交易详情</h3>
-                {% for period, trades in best_individual.trades_by_period.items() %}
-                {% if trades and trades|length > 0 %}
+                {% for period in ['1y', '3m', '1m'] %}
+                {% set trades = best_individual.trades_by_period.get(period, []) %}
                 <div style="margin-bottom: 24px;">
                     <h4 style="color: var(--cyan-glow); margin-bottom: 12px; font-size: 14px;">
-                        {{ period }} {% if best_individual.period_info.get(period) %}({{ best_individual.period_info[period].get('name', '') }}){% endif %}
+                        {{ '近1年' if period == '1y' else '近3月' if period == '3m' else '近1月' }}
+                        {% if best_individual.period_info.get(period) %}
+                            ({{ best_individual.period_info[period].get('name', '') }})
+                        {% endif %}
                     </h4>
+                    {% if trades and trades|length > 0 %}
                     <div style="max-height: 300px; overflow-y: auto;">
                         <table class="result-table" style="font-size: 12px;">
                             <thead>
@@ -886,11 +890,11 @@
                             <tbody>
                                 {% for trade in trades %}
                                 <tr>
-                                    <td class="mono">{% if trade.date is string %}{{ trade.date[:10] }}{% else %}{{ trade.date.strftime('%Y-%m-%d') }}{% endif %}</td>
+                                    <td class="mono">{% if trade.date is string %}{{ trade.date[:10] }}{% else %}{{ trade.date.strftime('%Y-%m-%d') if trade.date else '-' }}{% endif %}</td>
                                     <td class="mono {{ 'positive' if trade.action == 'buy' else 'negative' }}">
                                         {{ '买入' if trade.action == 'buy' else '卖出' }}
                                     </td>
-                                    <td class="mono">{{ "%.2f"|format(trade.price) }}</td>
+                                    <td class="mono">{{ "%.2f"|format(trade.price) if trade.price is not none else '-' }}</td>
                                     <td class="mono">{{ trade.get('units', trade.get('shares', '-')) }}</td>
                                     <td class="mono {% if trade.get('pnl', 0) > 0 %}positive{% elif trade.get('pnl', 0) < 0 %}negative{% endif %}">
                                         {% if trade.get('pnl') is not none %}
@@ -905,8 +909,12 @@
                             </tbody>
                         </table>
                     </div>
+                    {% else %}
+                    <div style="padding: 12px; background: rgba(99, 102, 241, 0.1); border-radius: 4px; color: var(--text-secondary); font-size: 13px;">
+                        此周期无交易记录（策略未触发入场信号）
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
                 {% endfor %}
             </div>
             {% endif %}

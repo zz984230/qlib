@@ -87,6 +87,7 @@ class StrategyPool:
             "id": strategy_id,
             "symbol": symbol,
             "timestamp": datetime.now().isoformat(),
+            "strategy_type": getattr(individual, "strategy_type", "turtle"),
             "factor_weights": individual.factor_weights,
             "signal_threshold": individual.signal_threshold,
             "exit_threshold": individual.exit_threshold,

@@ -63,6 +63,7 @@ uv.lock
 
 # Claude Code
 .claude/
+!.claude/skills/
 
 reports/html/
 

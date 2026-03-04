@@ -1,6 +1,7 @@
 """海龟策略回测执行器
 
 集成海龟交易法则的完整回测流程。
+支持海龟趋势跟踪策略和均值回归策略。
 """
 
 import logging
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         PortfolioState,
     )
     from src.strategy.turtle_signals import TurtleSignalGenerator
+    from src.strategy.mean_reversion_signals import MeanReversionSignalGenerator
     from src.optimizer.individual import Individual
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,10 @@ class TurtleBacktestRunner:
     2. 仓位管理（ATR 动态仓位 + 金字塔加仓）
     3. 风险控制（双重止损）
     4. 出场管理
+
+    支持两种策略类型：
+    - turtle: 海龟趋势跟踪策略
+    - mean_reversion: 均值回归策略
     """
 
     def __init__(
@@ -60,10 +66,17 @@ class TurtleBacktestRunner:
         self.commission = commission
         self.individual = individual
 
-        # 初始化各模块
+        # 获取策略类型
+        self.strategy_type = getattr(individual, 'strategy_type', 'turtle') if individual else 'turtle'
+
+        # 根据策略类型初始化信号生成器
         if individual:
-            from src.strategy.turtle_signals import TurtleSignalGenerator
-            self.signal_generator = TurtleSignalGenerator(individual)
+            if self.strategy_type == "mean_reversion":
+                from src.strategy.mean_reversion_signals import MeanReversionSignalGenerator
+                self.signal_generator = MeanReversionSignalGenerator(individual)
+            else:
+                from src.strategy.turtle_signals import TurtleSignalGenerator
+                self.signal_generator = TurtleSignalGenerator(individual)
         else:
             self.signal_generator = None
 
@@ -83,6 +96,9 @@ class TurtleBacktestRunner:
         self._indicator_cache = None
         self._atr_cache = None
 
+        # 均值回归策略不使用加仓
+        self._disable_pyramid = (self.strategy_type == "mean_reversion")
+
     def run(self, data: pd.DataFrame):
         """执行回测
 
@@ -99,7 +115,8 @@ class TurtleBacktestRunner:
         if self.signal_generator is None:
             raise ValueError("未设置信号生成器，请提供 Individual 参数")
 
-        logger.info(f"开始海龟策略回测: {self.symbol}, 数据长度: {len(data)}")
+        strategy_name = "海龟趋势跟踪策略" if self.strategy_type == "turtle" else "均值回归策略"
+        logger.info(f"开始{strategy_name}回测: {self.symbol}, 数据长度: {len(data)}")
 
         # 重置状态
         self.portfolio = PortfolioState(cash=self.initial_cash)
@@ -188,10 +205,10 @@ class TurtleBacktestRunner:
                 self._open_position_fast(bar_index, current_date)
                 position = self.portfolio.get_position(self.symbol)  # 获取新持仓
 
-        # 4. 检查加仓
+        # 4. 检查加仓（均值回归策略不使用加仓）
         if position is None:
             position = self.portfolio.get_position(self.symbol)
-        if position:
+        if position and not self._disable_pyramid:
             current_atr = self._atr_cache[bar_index] if self._atr_cache is not None else 0.0
             units_to_add = self.position_manager.get_pyramid_positions(
                 position, current_price, current_atr

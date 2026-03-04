@@ -145,12 +145,12 @@ class GeneticEngine:
             if factor_bias is not None:
                 # 使用加权随机选择
                 factor_names_array = np.array(list(factor_bias.keys()))
-                factor_weights = np.array(list(factor_bias.values()))
+                factor_weights_array = np.array(list(factor_bias.values()))
                 selected_factors = self.random.choice(
                     factor_names_array,
                     size=min(n_factors, len(factor_names_array)),
                     replace=False,
-                    p=factor_weights / factor_weights.sum()
+                    p=factor_weights_array / factor_weights_array.sum()
                 )
             else:
                 # 均匀随机选择
@@ -184,7 +184,11 @@ class GeneticEngine:
             # 随机生成 ADX 趋势强度阈值 (0-20，进一步放宽限制)
             min_adx = self.random.uniform(0.0, 20.0)
 
+            # 根据市场状态确定策略类型
+            strategy_type = "mean_reversion" if market_state == "ranging" else "turtle"
+
             individual = Individual(
+                strategy_type=strategy_type,
                 factor_weights=factor_weights,
                 signal_threshold=signal_threshold,
                 exit_threshold=exit_threshold,
@@ -333,19 +337,23 @@ class GeneticEngine:
         child1_genes[crossover_point:] = genes2[crossover_point:]
         child2_genes[crossover_point:] = genes1[crossover_point:]
 
-        # 从基因创建个体
+        # 从基因创建个体（继承父代的策略类型，优先使用parent1的策略类型）
+        strategy_type = parent1.strategy_type
         child1 = Individual.from_genes(
             child1_genes,
             self.factor_names,
             generation=generation,
             parent_ids=[id(parent1), id(parent2)]
         )
+        child1.strategy_type = strategy_type  # 设置策略类型
+
         child2 = Individual.from_genes(
             child2_genes,
             self.factor_names,
             generation=generation,
             parent_ids=[id(parent1), id(parent2)]
         )
+        child2.strategy_type = parent2.strategy_type  # 设置策略类型
 
         return child1, child2
 
@@ -367,6 +375,9 @@ class GeneticEngine:
         """
         genes = individual.to_genes(self.factor_names)
         n_factors = len(self.factor_names)
+
+        # 保存原始策略类型
+        original_strategy_type = individual.strategy_type
 
         # 对每个基因添加高斯噪声
         for i in range(len(genes)):
@@ -408,6 +419,9 @@ class GeneticEngine:
             generation=generation,
             parent_ids=individual.parent_ids + [id(individual)]
         )
+
+        # 恢复策略类型
+        mutated.strategy_type = original_strategy_type
 
         return mutated
 

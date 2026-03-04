@@ -11,6 +11,7 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 MarketState = Literal["strong_trend", "weak_trend", "ranging", "volatile"]
+StrategyType = Literal["turtle", "mean_reversion", None]
 
 
 class StrategySelector:
@@ -20,7 +21,7 @@ class StrategySelector:
         self.current_strategy = None
         self.current_market_state = None
 
-    def select_strategy(self, market_state: MarketState) -> str:
+    def select_strategy(self, market_state: MarketState) -> StrategyType:
         """根据市场状态选择策略类型
 
         Args:
@@ -54,6 +55,47 @@ class StrategySelector:
             self.current_strategy = "turtle"
             logger.warning(f"未知市场状态{market_state}，默认使用海龟策略")
             return "turtle"
+
+    def get_strategy_name(self, strategy_type: StrategyType) -> str:
+        """获取策略名称
+
+        Args:
+            strategy_type: 策略类型
+
+        Returns:
+            策略名称
+        """
+        if strategy_type == "turtle":
+            return "海龟趋势跟踪策略"
+        elif strategy_type == "mean_reversion":
+            return "均值回归策略"
+        else:
+            return "空仓观望"
+
+    def get_strategy_description(self, strategy_type: StrategyType) -> str:
+        """获取策略描述
+
+        Args:
+            strategy_type: 策略类型
+
+        Returns:
+            策略描述
+        """
+        descriptions = {
+            "turtle": (
+                "海龟趋势跟踪策略：追逐趋势，让利润奔跑。"
+                "入场：突破20日高点。止损：入场价 - 2*ATR。"
+                "加仓：每0.5*ATR加仓，最多4单位。"
+            ),
+            "mean_reversion": (
+                "均值回归策略：低买高卖，区间交易。"
+                "入场：RSI超买超卖或触及布林带。止损：1.5*ATR。"
+                "出场：价格回归均值或RSI回归中性区域。"
+            ),
+            None: "空仓观望：避免在异常波动市场交易。"
+        }
+
+        return descriptions.get(strategy_type, "未知策略")
 
     def get_position_multiplier(self, market_state: MarketState | None = None) -> float:
         """获取仓位系数
